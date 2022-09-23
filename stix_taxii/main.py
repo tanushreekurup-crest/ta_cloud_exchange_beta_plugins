@@ -168,7 +168,9 @@ class STIXTAXIIPlugin(PluginBase):
                 if not observable.object_:
                     continue
                 properties = observable.object_.properties
-                if type(properties) is File and properties.hashes.md5:
+                if not properties:
+                    continue
+                if type(properties) is File and properties.hashes and properties.hashes.md5:
                     indicators.append(
                         Indicator(
                             value=str(properties.hashes.md5),
@@ -181,7 +183,7 @@ class STIXTAXIIPlugin(PluginBase):
                             ),
                         )
                     )
-                if type(properties) is File and properties.hashes.sha256:
+                if type(properties) is File and properties.hashes and properties.hashes.sha256:
                     indicators.append(
                         Indicator(
                             value=str(properties.hashes.sha256),
@@ -194,7 +196,7 @@ class STIXTAXIIPlugin(PluginBase):
                             ),
                         )
                     )
-                if type(properties) in [URI, DomainName]:
+                if type(properties) in [URI, DomainName] and properties.value:
                     indicators.append(
                         Indicator(
                             value=str(properties.value),
@@ -216,7 +218,9 @@ class STIXTAXIIPlugin(PluginBase):
             if not observable.object_:
                 continue
             properties = observable.object_.properties
-            if type(properties) is File and properties.hashes.md5:
+            if not properties:
+                continue
+            if type(properties) is File and properties.hashes and properties.hashes.md5:
                 indicators.append(
                     Indicator(
                         value=str(properties.hashes.md5),
@@ -225,7 +229,7 @@ class STIXTAXIIPlugin(PluginBase):
                         comments=str(observable.description or ""),
                     )
                 )
-            if type(properties) is File and properties.hashes.sha256:
+            if type(properties) is File and properties.hashes and properties.hashes.sha256:
                 indicators.append(
                     Indicator(
                         value=str(properties.hashes.sha256),
@@ -234,7 +238,7 @@ class STIXTAXIIPlugin(PluginBase):
                         comments=str(observable.description or ""),
                     )
                 )
-            if type(properties) in [URI, DomainName]:
+            if type(properties) in [URI, DomainName] and properties.value:
                 indicators.append(
                     Indicator(
                         value=str(properties.value),
@@ -319,13 +323,19 @@ class STIXTAXIIPlugin(PluginBase):
                 begin_date=start_time,
             )
             for block in content_blocks:
-                temp = tempfile.TemporaryFile()
-                temp.write(block.content)
-                temp.seek(0)
-                stix_package = STIXPackage.from_xml(temp)
-                extracted = self._extract_indicators(stix_package)
-                indicators = indicators + extracted
-                temp.close()
+                try:
+                    temp = tempfile.TemporaryFile()
+                    temp.write(block.content)
+                    temp.seek(0)
+                    stix_package = STIXPackage.from_xml(temp)
+                    extracted = self._extract_indicators(stix_package)
+                    indicators = indicators + extracted
+                    temp.close()
+                except Exception as e:
+                    self.logger.error(
+                        f"Plugin STIX/TAXII: Following exception occured while extracting indicators from Content Block - {repr(e)}"
+                    )
+                    continue
         return indicators
 
     def _extract_observables_2x(self, pattern: str, data: dict):
@@ -400,7 +410,7 @@ class STIXTAXIIPlugin(PluginBase):
                 pass
         return indicators
 
-    def pull_21x(self, start_time):
+    def pull_21x(self, configuration, start_time):
         """Pull implementation for version 2.x."""
         indicators = []
         apiroot = ApiRoot21(
