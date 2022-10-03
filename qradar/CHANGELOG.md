@@ -1,3 +1,7 @@
+# 1.2.3
+## Fixed
+- Fixed Severity mappings for Audit events.
+
 # 1.2.2-beta
 ## Added
 - Added support for Syslog service plugin for Netskope CE.
