@@ -1,7 +1,7 @@
 {
     "name": "Mandiant",
     "id": "mandiant",
-    "version": "1.0.1-beta",
+    "version": "1.0.2-beta",
     "description": "The Mandiant plugin fetches IOCs of the type URL, MD5, FQDN, IPV4 and IPV6 from from Mandiant platform. This plugin does not support sharing of Indicators to Mandiant. To access the plugin, you would need Mandiant key ID and key secret.",
     "patch_supported": false,
     "push_supported": false,
