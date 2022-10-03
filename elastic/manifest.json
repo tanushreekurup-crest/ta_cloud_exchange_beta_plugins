@@ -1,0 +1,30 @@
+{
+  "name": "Elastic",
+  "id": "elastic",
+  "version": "1.1.1",
+  "mapping": "Elastic Default Mappings",
+  "description": "This plugin is used to deliver alerts/events data to Elastic platform.",
+  "netskope": false,
+  "types": [
+    "events",
+    "alerts"
+  ],
+  "configuration": [
+    {
+      "label": "Server Address",
+      "key": "server_address",
+      "type": "text",
+      "default": "",
+      "mandatory": true,
+      "description": "Server Address for TCP Connection."
+    },
+    {
+      "label": "Server Port",
+      "key": "server_port",
+      "type": "number",
+      "default": "",
+      "mandatory": true,
+      "description": "Server Port for TCP Connection."
+    }
+  ]
+}

@@ -64,6 +64,8 @@ class MandiantPlugin(PluginBase):
                     "Plugin: Mandiant, "
                     "Exception occurred while parsing JSON response."
                 )
+        if resp.status_code == 204:
+            return {}
         elif resp.status_code == 400:
             auth_reponse = resp.text
             result_dict = json.loads(auth_reponse)
@@ -152,7 +154,8 @@ class MandiantPlugin(PluginBase):
                 self.logger.error(f"Mandiant Error: {e}")
             else:
                 tag_names.append(tag.strip())
-        return tag_names
+        tag_names = set(tag_names)
+        return list(tag_names)
 
     def get_indicators(self, headers):
         indicator_list = []
@@ -255,8 +258,9 @@ class MandiantPlugin(PluginBase):
                 if "next" not in resp_json or "next" == "":
                     break
                 else:
-                    query_params["start_epoch"] = ""
-                    query_params["end_epoch"] = ""
+                    if "start_epoch" and "end_epoch" in query_params.keys():
+                        del query_params["start_epoch"]
+                        del query_params["end_epoch"]
                     query_params["next"] = resp_json["next"]
 
             except requests.ConnectionError:
