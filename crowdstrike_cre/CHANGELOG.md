@@ -1,3 +1,7 @@
+# 1.1.2
+## Added
+- Added description for CRE score calculation.
+
 # 1.1.1-beta
 ## Fixed
 - Fixed an issue with a large number of hosts.
