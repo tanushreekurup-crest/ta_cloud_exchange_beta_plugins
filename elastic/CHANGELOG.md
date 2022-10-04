@@ -1,3 +1,7 @@
+# 2.0.0
+## Added
+- Added support to sent raw data to the SIEM Platform.
+
 # 1.1.1
 ## Fixed
 - Fixed incompatible format of data received in the alert.
