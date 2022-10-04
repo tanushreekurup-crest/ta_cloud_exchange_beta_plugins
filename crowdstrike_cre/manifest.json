@@ -1,11 +1,11 @@
 {
     "name": "CrowdStrike",
-    "description": "Fetch ZTA scores from your CrowdStrike tenant.",
+    "description": "Fetch ZTA scores from your CrowdStrike tenant. \n\n CRE score calculation => CrowdStrike host assessment overall score * 10.",
     "id": "crowdstrike_cre",
     "type": [
         "host"
     ],
-    "version": "1.1.1-beta",
+    "version": "1.1.2",
     "configuration": [
         {
             "label": "Base URL",
