@@ -1,5 +1,5 @@
 {
-    "name": "SecurityScorecard",
+    "name": "SecurityScorecard Application Risk Exchange",
     "id": "security_scorecard",
     "version": "1.0.0",
     "description": "SecurityScorecard plugin provides a mechanism to send the application data of Netskope tenant to the respective companies as signals for risk analysis.",
