@@ -1,0 +1,24 @@
+{
+    "name": "SecurityScorecard Application Risk Exchange",
+    "id": "security_scorecard",
+    "version": "1.0.0",
+    "description": "SecurityScorecard plugin provides a mechanism to send the application data of Netskope tenant to the respective companies as signals for risk analysis.",
+    "configuration": [
+        {
+            "label": "API Token",
+            "key": "api_token",
+            "type": "password",
+            "mandatory": true,
+            "default": "",
+            "description": "API Token for Authentication."
+        },
+        {
+            "label": "Portfolio Name",
+            "key": "portfolio_name",
+            "type": "text",
+            "mandatory": true,
+            "default": "",
+            "description": "Portfolio Name."
+        }
+    ]
+}
