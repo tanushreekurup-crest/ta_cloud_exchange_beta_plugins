@@ -1,3 +1,7 @@
+# 1.1.3
+## Added
+- Added support for Netskope client restart.
+
 # 1.1.2
 ## Added
 - Added description for CRE score calculation.
