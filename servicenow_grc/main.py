@@ -162,7 +162,10 @@ class ServiceNowPlugin(PluginBase):
         config = self.configuration
         snow_results = {}
         query_builder_dict = self.get_query_builder_list(query_builder_list)
+        skip_count = 0
+        total_count = 0
         for app in applications:
+            total_count += 1
             app_dict = app.dict()
             app_details = {
                 "app_id": app_dict.get("applicationId"),
@@ -186,6 +189,7 @@ class ServiceNowPlugin(PluginBase):
                 self.logger.warn(
                     f"Application '{app_dict.get('applicationName')}' match is not available in ServiceNow, skipping sharing of this application."
                 )
+                skip_count += 1
 
             self.logger.info(
                 f"Found {len(snow_records)} matches for application '{app_dict.get('applicationName')}'."
@@ -234,6 +238,10 @@ class ServiceNowPlugin(PluginBase):
                     f"Error occurred while pushing data. Error: {ex}"
                 )
 
+        self.logger.info(
+            f"Total {total_count - skip_count} applications shared successfully with ServiceNow and "
+            f"{skip_count} applications were skipped."
+        )
         return PushResult(
             success=True, message="Successfully pushed data to ServiceNow."
         )
