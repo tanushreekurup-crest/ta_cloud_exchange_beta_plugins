@@ -40,7 +40,7 @@ class ThirdPartyTrust(PluginBase):
                 break
             elif resp.status_code == 429 and attempt < (MAX_RETRY_COUNT - 1):
                 self.logger.info(
-                    f"Too many requests occurred for {url}, retrying to make the API call. Retry count: {attempt + 1}"
+                    f"Too many requests occurred for {url}, retrying to make the API call. Retry count: {attempt + 1}."
                 )
                 time.sleep(60)
         else:
@@ -93,8 +93,16 @@ class ThirdPartyTrust(PluginBase):
 
     def check_result(self, tpt_record_value, application_value):
         """To check value of the source fields is matching with the value of application field or not."""
+        tpt_record_value = tpt_record_value.lower() if isinstance(tpt_record_value, str) else tpt_record_value
         if isinstance(application_value, list):
-            return tpt_record_value in application_value
+            for app_val in application_value:
+                app_val = app_val.lower() if isinstance(app_val, str) else app_val
+                if app_val == tpt_record_value:
+                    return True
+            else:
+                return False
+
+        application_value = application_value.lower() if isinstance(application_value, str) else application_value
         return tpt_record_value == application_value
 
     def list_of_application(self, final_dict, uuid, app):
@@ -110,7 +118,7 @@ class ThirdPartyTrust(PluginBase):
         Args:
             applications (_type_): _description_
         """
-        self.logger.info("Plugin ThirdPartyTrust: excuting push method")
+        self.logger.info("Plugin ThirdPartyTrust: Executing push method.")
         config = self.configuration
         query_builder_dict = self.get_query_builder_list(mapping)
         vendor_results = self.pull_vendors()
@@ -123,6 +131,7 @@ class ThirdPartyTrust(PluginBase):
             )
         final_dict = {}
         operation = query_builder_dict.get("operation")
+        skip_count = 0
         for app in applications:
             check_match = False
             app_dict = app.dict()
@@ -148,11 +157,13 @@ class ThirdPartyTrust(PluginBase):
                     elif operation == "and":
                         break
             if not check_match:
-                self.logger.info(
+                skip_count += 1
+                self.logger.warn(
                     f"Application '{app_dict.get('applicationName')}' match is not available in ThirdPartyTrust, skipping sharing of this application."
                 )
         current_time = datetime.now()
         current_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+        shared_count = 0
         for vendor_id in final_dict:
             details = final_dict[vendor_id]
             notes = f"[Netskope CE] Last shared at: {current_time}\n"
@@ -165,6 +176,7 @@ class ThirdPartyTrust(PluginBase):
                     method="post",
                     data=payload,
                 )
+                shared_count += len(details)
             except requests.exceptions.ProxyError:
                 raise requests.HTTPError("Invalid proxy configuration.")
             except requests.exceptions.ConnectionError:
@@ -177,7 +189,10 @@ class ThirdPartyTrust(PluginBase):
                 raise requests.HTTPError(
                     f"Error occurred while pushing data. Error: {ex}"
                 )
-
+        self.logger.info(
+            f"Total {shared_count} applications shared successfully with ThirdPartyTrust and "
+            f"{skip_count} applications were skipped."
+        )
         return PushResult(
             success=True, message="Successfully pushed data to ThirdPartyTrust."
         )
@@ -194,7 +209,7 @@ class ThirdPartyTrust(PluginBase):
             cte.plugin_base.ValidateResult: ValidateResult object with success flag and message.
         """
         self.logger.info(
-            "ThirdPartyTrust Plugin: Executing validate method for ThirdPartyTrust plugin"
+            "ThirdPartyTrust Plugin: Executing validate method for ThirdPartyTrust plugin."
         )
         if "url" not in data or not data["url"] or type(data["url"]) != str:
             self.logger.error(
@@ -224,7 +239,7 @@ class ThirdPartyTrust(PluginBase):
             )
             if response.status_code in [401, 403]:
                 self.logger.error(
-                    f"ThirdPartyTrust Plugin: HTTP request returned with status code {response.status_code}"
+                    f"ThirdPartyTrust Plugin: HTTP request returned with status code {response.status_code}."
                 )
                 return ValidationResult(
                     success=False,
@@ -232,7 +247,7 @@ class ThirdPartyTrust(PluginBase):
                 )
             elif response.status_code != 200:
                 self.logger.error(
-                    f"ThirdPartyTrust Plugin: HTTP request returned with status code {response.status_code}"
+                    f"ThirdPartyTrust Plugin: HTTP request returned with status code {response.status_code}."
                 )
                 return ValidationResult(
                     success=False,
@@ -240,7 +255,7 @@ class ThirdPartyTrust(PluginBase):
                 )
         except Exception as e:
             self.logger.error(
-                "ThirdPartyTrust Plugin: Error while fetching data from ThirdPartyTrust"
+                "ThirdPartyTrust Plugin: Error while fetching data from ThirdPartyTrust."
                 + repr(e)
             )
             return ValidationResult(
