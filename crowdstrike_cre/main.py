@@ -31,19 +31,22 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 """Crowdstrike CRE plugin."""
-import json
 import datetime
+import json
+import time
+from typing import List
+
 import requests
-from requests.models import HTTPError
-from netskope.integrations.cre.plugin_base import PluginBase, ValidationResult
+from netskope.common.utils import add_user_agent
 from netskope.integrations.cre.models import (
+    Action,
+    ActionWithoutParams,
     Record,
     RecordType,
-    ActionWithoutParams,
-    Action,
 )
-from netskope.common.utils import add_user_agent
-from typing import List
+from netskope.integrations.cre.plugin_base import PluginBase, ValidationResult
+from requests.models import HTTPError
+
 from .lib.falconpy.api_complete import APIHarness
 
 PAGE_SIZE = 5000
@@ -149,7 +152,7 @@ class CrowdstrikePlugin(PluginBase):
             agent_ids = []
             auth_token = auth_json.get("access_token")
             headers = {"Authorization": f"Bearer {auth_token}"}
-            agent_ids = self.get_agent_ids(headers)
+            agent_ids = self.get_agent_ids(headers, True)
             return agent_ids
 
         except requests.exceptions.ProxyError:
@@ -190,11 +193,13 @@ class CrowdstrikePlugin(PluginBase):
                 return device
         return None
 
-    def get_agent_ids(self, headers):
+    def get_agent_ids(self, headers, get_all_device):
         """Get the all the Agent ID list from the Query Endpoint.
 
         Args:
             headers (dict): Header dict object having OAUTH2 access token.
+            get_all_device (bool): Boolean variable indicating to fetch all
+            devices or not.
         Returns:
             dict: JSON response dict received from query endpoint.
         """
@@ -205,11 +210,12 @@ class CrowdstrikePlugin(PluginBase):
         while True:
             headers = self.reload_auth_token(headers)
             params = {"limit": PAGE_SIZE, "offset": offset}
-            if self.last_run_at:
+            if self.last_run_at and (get_all_device is False):
                 formatted_date = self.last_run_at.strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
                 params.update({"filter": f"first_seen: > '{formatted_date}'"})
+
             all_agent_resp = requests.get(
                 query_endpoint,
                 headers=add_user_agent(headers),
@@ -400,6 +406,9 @@ class CrowdstrikePlugin(PluginBase):
                 device_id=device_id,
                 cmd=cmd,
             )
+            if status:
+                return
+            time.sleep(3)
 
     def _put_file_on_device(
         self, session_id: str, score: int, device_id: str, platform_name: str
@@ -720,7 +729,7 @@ class CrowdstrikePlugin(PluginBase):
             )
             auth_token = auth_json.get("access_token")
             headers = {"Authorization": f"Bearer {auth_token}"}
-            agent_ids = self.get_agent_ids(headers)
+            agent_ids = self.get_agent_ids(headers, False)
             uids_names = []
             for ids in agent_ids:
                 uids_names.append(Record(uid=ids, type=RecordType.HOST))
@@ -791,16 +800,15 @@ class CrowdstrikePlugin(PluginBase):
             scored_uids = []
             count_host = 0
             for aid, score in scores.items():
-                if score <= int(self.configuration["minimum_score"]):
-                    count_host += 1
-                    continue
-                else:
+                if score <= int(self.configuration["maximum_score"]):
                     scored_uids.append(
                         Record(uid=aid, type=RecordType.HOST, score=score)
                     )
+                    count_host += 1
             self.logger.info(
-                "Crowdstrike CRE Plugin: Successfully fetched scores of "
-                f"{count_host} Host(s) from CrowdStrike."
+                "Crowdstrike CRE Plugin: Successfully fetched scores for "
+                f"{count_host} Host(s) and skipped fetching scores for "
+                f"{len(aids)-count_host} from CrowdStrike."
             )
             return scored_uids
         except requests.exceptions.ProxyError:
@@ -1025,7 +1033,8 @@ class CrowdstrikePlugin(PluginBase):
         device = record.uid
         devices = self.get_all_devices()
         match = self._find_device_by_id(devices, device)
-        if match:
+
+        if match is None:
             self.logger.warn(
                 f"Crowdstrike CRE Plugin: Host with id {device} not "
                 "found on CrowdStrike."
@@ -1038,7 +1047,7 @@ class CrowdstrikePlugin(PluginBase):
                     score_to_be_put = score.current
             if score_to_be_put is None:
                 self.logger.error(
-                    "CrowdStrike CRE: Could not find user"
+                    "Crowdstrike CRE Plugin: Could not find user"
                     f" score for {record.uid}."
                 )
                 return
@@ -1128,20 +1137,18 @@ class CrowdstrikePlugin(PluginBase):
             )
 
         if (
-            "minimum_score" not in data
-            or not data["minimum_score"]
-            or 1 > int(data["minimum_score"])
-            or 1000 < int(data["minimum_score"])
+            "maximum_score" not in data
+            or not data["maximum_score"]
+            or 1 > int(data["maximum_score"])
+            or 1000 < int(data["maximum_score"])
         ):
             self.logger.error(
                 "Crowdstrike CRE Plugin: Validation error occurred"
-                "Error: Type of minimum_score should be non-empty integer."
+                "Error: Type of Maximum Score should be non-empty integer."
             )
             return ValidationResult(
                 success=False,
-                message="".join(
-                    "Invalid minimum_score provided. Range is from 1 to 1000."
-                ),
+                message="Invalid Maximum Score provided. Range is from 1 to 1000.",
             )
 
         if (
