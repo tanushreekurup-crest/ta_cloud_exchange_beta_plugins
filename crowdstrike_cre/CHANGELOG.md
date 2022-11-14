@@ -1,3 +1,7 @@
+# 1.1.4
+## Changed
+- Changed logic to fetch scores of hosts less than or equal to Maximum Score. 
+
 # 1.1.3
 ## Added
 - Added support for Netskope client restart.
