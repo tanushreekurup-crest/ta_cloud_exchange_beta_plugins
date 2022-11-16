@@ -1,6 +1,7 @@
 # 1.1.4
 ## Changed
-- Changed logic to fetch scores of hosts less than or equal to Maximum Score. 
+- Changed logic to fetch score of host(s) less than or equal to the Maximum Score.
+- Optimized performance of execute action.
 
 # 1.1.3
 ## Added
