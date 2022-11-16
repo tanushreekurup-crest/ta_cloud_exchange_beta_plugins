@@ -137,69 +137,13 @@ class CrowdstrikePlugin(PluginBase):
                 f"Received exit code {resp.status_code}, HTTP Error"
             )
 
-    def get_all_devices(self) -> List:
-        """Get list of all devices.
-
-        Returns:
-            List: List of all devices.
-        """
-        try:
-            auth_json = self.get_auth_json(
-                self.configuration.get("client_id").strip(),
-                self.configuration.get("client_secret").strip(),
-                self.configuration.get("base_url").strip(),
-            )
-            agent_ids = []
-            auth_token = auth_json.get("access_token")
-            headers = {"Authorization": f"Bearer {auth_token}"}
-            agent_ids = self.get_agent_ids(headers, True)
-            return agent_ids
-
-        except requests.exceptions.ProxyError:
-            error_msg = "Crowdstrike CRE Plugin: Invalid proxy configuration."
-            self.notifier.error(error_msg)
-            self.logger.error(error_msg)
-            raise requests.HTTPError(error_msg)
-        except requests.exceptions.ConnectionError:
-            error_msg = " ".join(
-                [
-                    "Crowdstrike CRE Plugin: Unable to establish connection",
-                    "with CrowdStrike platform. Proxy server or CrowdStrike",
-                    "API is not reachable.",
-                ]
-            )
-            self.notifier.error(error_msg)
-            self.logger.error(error_msg)
-            raise requests.HTTPError(error_msg)
-        except requests.exceptions.RequestException as e:
-            self.logger.error(
-                "Plugin: CrowdStrike Exception occurred while making"
-                "an API call to CrowdStrike platform."
-            )
-            raise e
-
-    def _find_device_by_id(self, devices: List, device_id: str) -> str:
-        """Find device by id.
-
-        Args:
-            devices (List): List of all devices
-            device_id (str): id of the device to find
-
-        Returns:
-            str: Id of the device if found, None otherwise.
-        """
-        for device in devices:
-            if device == device_id:
-                return device
-        return None
-
-    def get_agent_ids(self, headers, get_all_device):
+    def get_agent_ids(self, headers, device_id=None):
         """Get the all the Agent ID list from the Query Endpoint.
 
         Args:
             headers (dict): Header dict object having OAUTH2 access token.
-            get_all_device (bool): Boolean variable indicating to fetch all
-            devices or not.
+            device_id(Optional): Device id.
+
         Returns:
             dict: JSON response dict received from query endpoint.
         """
@@ -210,11 +154,13 @@ class CrowdstrikePlugin(PluginBase):
         while True:
             headers = self.reload_auth_token(headers)
             params = {"limit": PAGE_SIZE, "offset": offset}
-            if self.last_run_at and (get_all_device is False):
+            if self.last_run_at and (device_id is None):
                 formatted_date = self.last_run_at.strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
                 params.update({"filter": f"first_seen: > '{formatted_date}'"})
+            elif device_id:
+                params.update({"filter": f"device_id: '{device_id}'"})
 
             all_agent_resp = requests.get(
                 query_endpoint,
@@ -729,7 +675,7 @@ class CrowdstrikePlugin(PluginBase):
             )
             auth_token = auth_json.get("access_token")
             headers = {"Authorization": f"Bearer {auth_token}"}
-            agent_ids = self.get_agent_ids(headers, False)
+            agent_ids = self.get_agent_ids(headers)
             uids_names = []
             for ids in agent_ids:
                 uids_names.append(Record(uid=ids, type=RecordType.HOST))
@@ -1022,6 +968,28 @@ class CrowdstrikePlugin(PluginBase):
                     f"restarting host id {host_id}. Cause {exp}"
                 )
 
+    def _get_device_match(self, device_id: str) -> bool:
+        """Get device match.
+
+        Args:
+            device_id (str): Device ID.
+
+        Returns:
+            bool: True if device is found else False.
+        """
+        auth_json = self.get_auth_json(
+            self.configuration.get("client_id").strip(),
+            self.configuration.get("client_secret").strip(),
+            self.configuration.get("base_url").strip(),
+        )
+        auth_token = auth_json.get("access_token")
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        agent_ids = self.get_agent_ids(headers, device_id)
+        if device_id in agent_ids:
+            return True
+        else:
+            return False
+
     def execute_action(self, record: Record, action: Action):
         """Execute action on the record."""
         if (
@@ -1031,10 +999,8 @@ class CrowdstrikePlugin(PluginBase):
         ):
             pass
         device = record.uid
-        devices = self.get_all_devices()
-        match = self._find_device_by_id(devices, device)
-
-        if match is None:
+        match = self._get_device_match(record.uid)
+        if not match:
             self.logger.warn(
                 f"Crowdstrike CRE Plugin: Host with id {device} not "
                 "found on CrowdStrike."
