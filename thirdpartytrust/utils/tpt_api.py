@@ -30,17 +30,16 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-"""Contains helper classes for ThirdPartyTrust API calls.."""
-
+"""Contains helper classes for BitSight API calls.."""
 from typing import List
 import requests
 
-TPT_API_URL = "https://api.thirdpartytrust.com/api/v3/netskope"
+BITSIGHT_API_URL = "https://api.thirdpartytrust.com/api/v3/netskope"
 
 
 class BaseAPIClient:
     """
-    Base TPT API methods
+    Base BitSight API methods
     """
 
     def __init__(self, token: str, proxy, ssl_validation: bool, base_url: str):
@@ -48,12 +47,13 @@ class BaseAPIClient:
 
         Args:
             token (str): Authentication token.
-            base_url (str): Base URL where we are going to do the requests. It can be different
-                         depending on the environment we are executing the requests
+            base_url (str): Base URL where we are going to do the requests.
+            It can be different depending on the environment we are executing
+            the requests.
         """
 
         assert token, "Invalid Token."
-        assert base_url, "Invalid TPT API url."
+        assert base_url, "Invalid BitSight API url."
 
         if proxy is None:
             proxy = {}
@@ -103,11 +103,15 @@ class BaseAPIClient:
         return response.json()
 
 
-class ThirdPartyTrustAPIClient(BaseAPIClient):
-    """ThirdPartyTrustAPIClient Class."""
+class BitSightAPIClient(BaseAPIClient):
+    """BitSightAPIClient Class."""
 
     def __init__(
-        self, token: str, proxy=None, ssl_validation=True, base_url=TPT_API_URL
+        self,
+        token: str,
+        proxy=None,
+        ssl_validation=True,
+        base_url=BITSIGHT_API_URL,
     ):
         """Initialize Variables.
 
@@ -115,7 +119,7 @@ class ThirdPartyTrustAPIClient(BaseAPIClient):
             token (str): _description_
             proxy (dict, optional): Proxy. Defaults to None.
             ssl_validation (bool, optional): SSL Validation is required. Defaults to True.
-            base_url (dict, optional): Base URL. Defaults to TPT_API_URL.
+            base_url (dict, optional): Base URL. Defaults to BITSIGHT_API_URL.
         """
         if proxy is None:
             proxy = {}
@@ -139,20 +143,20 @@ class ThirdPartyTrustAPIClient(BaseAPIClient):
         return self._get(endpoint=endpoint)
 
 
-class ThirdPartyTrustDataSender:
-    """Third party Trust Data Sender Class."""
+class BitSightDataSender:
+    """BitSight Data Sender Class."""
 
-    def __init__(self, tpt_token: str, proxy: dict, ssl_validation: bool):
+    def __init__(self, bitsight_token: str, proxy: dict, ssl_validation: bool):
         """Initialize variables.
 
         Args:
-            tpt_token (str): API Token for Third party Trust
+            bitsight_token (str): API Token for Bitsight.
             proxy (dict): Proxy dictionary.
             ssl_validation (bool): SSL Validation. True for SSL validation else False
         """
         self.ssl_validation = ssl_validation
         self.proxy = proxy
-        self.tpt_token = tpt_token
+        self.bitsight_token = bitsight_token
 
     def send_data(self, data: List, data_type: str, data_subtype=""):
         """Send Data.
@@ -162,10 +166,10 @@ class ThirdPartyTrustDataSender:
             data_type (str): Data type
             data_subtype (str, optional): Data subtype. Defaults to "".
         """
-        tpt_client = ThirdPartyTrustAPIClient(
-            self.tpt_token, self.proxy, self.ssl_validation
+        bitsight_client = BitSightAPIClient(
+            self.bitsight_token, self.proxy, self.ssl_validation
         )
-        upload_url = tpt_client.get_destination_data_config(
+        upload_url = bitsight_client.get_destination_data_config(
             data_type, data_subtype
         )
         response = requests.put(
