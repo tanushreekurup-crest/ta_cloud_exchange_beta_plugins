@@ -1,1 +1,1 @@
-"""ThirdPartyTrust Plugin Package."""
+"""BitSight ARE Plugin Package."""
