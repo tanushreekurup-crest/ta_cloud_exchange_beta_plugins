@@ -1,1 +1,1 @@
-"""ThirdPartyTrust Plugin."""
+"""BitSight CLS Plugin."""

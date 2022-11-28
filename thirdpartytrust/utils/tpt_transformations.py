@@ -36,8 +36,8 @@ import hashlib
 from typing import List
 
 
-class ThirdPartyTrustDataTransformer:
-    """ThirdPartyTrustDataTransformer transform class."""
+class BitSightDataTransformer:
+    """BitSightDataTransformer transform class."""
 
     def __init__(self, allowed_fields: List, fields_to_obfuscate: List):
         """Initialize variables.
