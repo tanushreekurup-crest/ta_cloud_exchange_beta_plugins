@@ -1,7 +1,7 @@
 {
   "name": "Microsoft Defender for Endpoint",
   "id": "microsoftdefenderv2",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "This plugin is used to pull and push IoC data from Microsoft Defender for Endpoint. For details, visit [here](https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/ti-indicator?view=o365-worldwide).",
   "push_supported": true,
   "patch_supported": true,
@@ -77,39 +77,29 @@
       "key": "actions_to_be_pulled",
       "type": "multichoice",
       "choices": [
-          {
-              "key": "Alert",
-              "value": "Alert"
-          },
-          {
-              "key": "Alert And Block",
-              "value": "AlertAndBlock"
-          },
-          {
-              "key": "Allowed",
-              "value": "Allowed"
-          },
-          {
-              "key": "Audit",
-              "value": "Audit"
-          },
-          {
-              "key": "Block",
-              "value": "Block"
-          },
-          {
-              "key": "Block And Remediate",
-              "value": "BlockAndRemediate"
-          },
-          {
-              "key": "Warn",
-              "value": "Warn"
-          }
+        {
+            "key": "Allowed",
+            "value": "Allowed"
+        },
+        {
+            "key": "Audit",
+            "value": "Audit"
+        },
+        {
+            "key": "Block",
+            "value": "Block"
+        },
+        {
+            "key": "Block And Remediate",
+            "value": "BlockAndRemediate"
+        },
+        {
+            "key": "Warn",
+            "value": "Warn"
+        }
       ],
       "mandatory": false,
       "default": [
-          "Alert",
-          "AlertAndBlock",
           "Allowed",
           "Audit",
           "Block",
@@ -118,6 +108,28 @@
       ],
       "description": "Only indicators with matching Action(s) will be pulled. If no action is selected all indicators will be pulled."
     },
+    {
+      "label": "Indicators with Generated Alert",
+      "key": "generate_alert",
+      "type": "choice",
+      "choices": [
+          {
+              "key": "True",
+              "value": true
+          },
+          {
+              "key": "False",
+              "value": false
+          },
+          {
+            "key": "Both",
+            "value": "Both"
+        }
+      ],
+      "default": "Both",
+      "mandatory": true,
+      "description": "Indicators will be pulled on the basis of whether the alerts are generated for the indicators or not."
+  } ,
     {
       "label": "Initial Range (in days)",
       "key": "initial_range",

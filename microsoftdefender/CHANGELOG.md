@@ -1,3 +1,11 @@
+# 1.3.1
+## Added
+- Added 'Indicators with Generated Alert' field in Configuration parameters.
+- Added 'Generate Alert' field in the sharing configuration.
+
+## Removed
+- Removed actions 'Alert' and 'Alert and Block' from configuration and sharing configuration.
+
 # 1.3.0
 ## Added
 - Added support for different regions for Base URL.
