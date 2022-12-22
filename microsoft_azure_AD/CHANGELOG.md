@@ -1,3 +1,11 @@
+# 1.1.2
+## Added
+- Added error handling for invalid users.
+
+# 1.1.1
+## Changed
+- Changed module name from CRE to URE.
+
 # 1.1.0
 ## Added
 - Added support for Confirm compromised action in Microsoft Azure AD.

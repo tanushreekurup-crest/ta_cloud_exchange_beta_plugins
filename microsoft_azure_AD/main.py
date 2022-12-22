@@ -45,9 +45,11 @@ from netskope.integrations.cre.models import (
     RecordType,
 )
 from netskope.integrations.cre.plugin_base import PluginBase, ValidationResult
+from pydantic import ValidationError
 
 PAGE_SIZE = "999"
 PAGE_RECORD_SCORE = "500"
+PLUGIN_NAME = "Microsoft Azure AD URE Plugin"
 
 
 class MicrosoftAzureADException(Exception):
@@ -100,7 +102,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             return
         if response.status_code == 400:
             self.logger.warn(
-                f"Plugin: Microsoft Azure AD, cannot add as "
+                f"{PLUGIN_NAME}: cannot add as "
                 f"{email} already exists in the group."
             )
             return
@@ -111,7 +113,7 @@ class MicrosoftAzureADPlugin(PluginBase):
         if auth_errors:
             err_msg = auth_errors[0].get("message", "")
             raise requests.HTTPError(
-                f"Plugin: Microsoft Azure AD, unable to add {email} to group. "
+                f"{PLUGIN_NAME}: unable to add {email} to group. "
                 f"Error: {err_msg}."
             )
 
@@ -151,7 +153,7 @@ class MicrosoftAzureADPlugin(PluginBase):
 
         if response.status_code == 404:
             self.logger.warn(
-                f"Plugin: Microsoft Azure AD, cannot remove as "
+                f"{PLUGIN_NAME}: cannot remove as "
                 f"{email} does not exist in the group."
             )
             return
@@ -162,7 +164,7 @@ class MicrosoftAzureADPlugin(PluginBase):
         if auth_errors:
             err_msg = auth_errors[0].get("message", "")
             raise requests.HTTPError(
-                f"Plugin: Microsoft Azure AD, unable to remove {email} "
+                f"{PLUGIN_NAME}: unable to remove {email} "
                 f"to group. "
                 f"Error: {err_msg}."
             )
@@ -212,8 +214,7 @@ class MicrosoftAzureADPlugin(PluginBase):
         if auth_errors:
             err_msg = auth_errors[0].get("message", "")
             raise requests.HTTPError(
-                "Plugin: Microsoft Azure AD, unable to create group. "
-                f"Error: {err_msg}."
+                f"{PLUGIN_NAME}: unable to create group. Error: {err_msg}."
             )
 
         return response_json.get("id")
@@ -251,7 +252,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             if auth_errors:
                 err_msg = auth_errors[0].get("message", "")
                 raise requests.HTTPError(
-                    "Plugin: Microsoft Azure AD unable to get all group. "
+                    f"{PLUGIN_NAME}: unable to get all group. "
                     f"Error: {err_msg}."
                 )
             # stores the number of groups in that particular pagination query
@@ -327,7 +328,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             if auth_errors:
                 err_msg = auth_errors[0].get("message", "")
                 raise requests.HTTPError(
-                    "Plugin: Microsoft Azure AD unable to get all users. "
+                    f"{PLUGIN_NAME}: unable to get all users. "
                     f"Error: {err_msg}."
                 )
 
@@ -383,7 +384,7 @@ class MicrosoftAzureADPlugin(PluginBase):
         if auth_errors:
             err_msg = auth_errors[0].get("message", "")
             raise requests.HTTPError(
-                f"Plugin: Microsoft Azure AD, unable to get id from email. "
+                f"{PLUGIN_NAME}: unable to get id from email. "
                 f"Error: {err_msg}."
             )
         id = response_json["id"]
@@ -433,7 +434,7 @@ class MicrosoftAzureADPlugin(PluginBase):
 
         if match is None:
             self.logger.warn(
-                f"Microsoft Azure AD CRE: User with email {user} not "
+                f"{PLUGIN_NAME}: User with email {user} not "
                 f"found on Azure AD."
             )
             return
@@ -456,7 +457,7 @@ class MicrosoftAzureADPlugin(PluginBase):
                     group_id = match_group.get("id")
             self._add_to_group(self.configuration, match, group_id)
             self.logger.info(
-                f"Microsoft Azure AD: Added {user} to group with "
+                f"{PLUGIN_NAME}: Added {user} to group with "
                 f"ID {action.parameters.get('group')}."
             )
         elif action.value == "remove":
@@ -468,7 +469,7 @@ class MicrosoftAzureADPlugin(PluginBase):
                 action.parameters.get("group"),
             )
             self.logger.info(
-                f"Microsoft Azure AD: Removed {user} from group with "
+                f"{PLUGIN_NAME}: Removed {user} from group with "
                 f"ID {action.parameters.get('group')}."
             )
         elif action.value == "confirm_compromised":
@@ -489,12 +490,12 @@ class MicrosoftAzureADPlugin(PluginBase):
             self.handle_error(resp=response)
             if response.status_code == 204:
                 self.logger.info(
-                    "Microsoft Azure AD: Successfully performed Confirm "
+                    f"{PLUGIN_NAME}: Successfully performed Confirm "
                     f"compromised action on user: {user_info.get('email')}."
                 )
             else:
                 self.logger.error(
-                    "Microsoft Azure AD: Could not perform Confirm compromised"
+                    f"{PLUGIN_NAME}: Could not perform Confirm compromised"
                     f" action on user {user_info.get('email')}."
                 )
 
@@ -635,7 +636,7 @@ class MicrosoftAzureADPlugin(PluginBase):
         if auth_errors:
             err_msg = auth_errors[0].get("message", "")
             raise requests.HTTPError(
-                f"Plugin: Microsoft Azure AD Unable to generate Auth token. "
+                f"{PLUGIN_NAME}: Unable to generate Auth token. "
                 f"Error: {err_msg}."
             )
         if self.storage is not None:
@@ -676,7 +677,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             ):
                 # Reload token
                 self.logger.info(
-                    "Plugin: Microsoft Azure AD OAUTH2 token expired. "
+                    f"{PLUGIN_NAME}: OAUTH2 token expired. "
                     "Generating a new token."
                 )
                 auth_json = self.get_auth_json(configuration)
@@ -700,17 +701,13 @@ class MicrosoftAzureADPlugin(PluginBase):
             ValidateResult: ValidateResult object with success flag and
                             message.
         """
-        self.logger.info(
-            "Plugin: Executing validate method for Microsoft Azure AD plugin"
-        )
-
         if (
             "client_id" not in configuration
             or not configuration["client_id"].strip()
             or type(configuration["client_id"]) != str
         ):
             self.logger.error(
-                "Plugin: Microsoft Azure AD Validation error occurred. "
+                f"{PLUGIN_NAME}: Validation error occurred. "
                 "Error: Type of Client ID should be a non-empty string."
             )
             return ValidationResult(
@@ -724,7 +721,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             or type(configuration["client_secret"]) != str
         ):
             self.logger.error(
-                "Plugin: Microsoft Azure AD Validation error occurred. "
+                f"{PLUGIN_NAME}: Validation error occurred. "
                 "Error: Type of Client Secret should be a non-empty string."
             )
             return ValidationResult(
@@ -738,7 +735,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             or type(configuration["tenant_id"]) != str
         ):
             self.logger.error(
-                "Plugin: Microsoft Azure AD Validation error occurred. "
+                f"{PLUGIN_NAME}: Validation error occurred. "
                 "Error: Type of Tenant ID should be a non-empty string."
             )
             return ValidationResult(
@@ -776,7 +773,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             )
         except requests.exceptions.ProxyError:
             self.logger.error(
-                "Plugin: Microsoft Azure AD Validation Error, "
+                f"{PLUGIN_NAME}: Validation Error, "
                 "invalid proxy configuration."
             )
             return ValidationResult(
@@ -785,7 +782,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             )
         except requests.exceptions.ConnectionError:
             self.logger.error(
-                "Plugin: Microsoft Azure AD Validation Error, "
+                f"{PLUGIN_NAME}: Validation Error, "
                 "unable to establish connection with "
                 "Microsoft Azure AD Platform API."
             )
@@ -796,7 +793,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             )
         except requests.HTTPError as err:
             self.logger.error(
-                f"Microsoft Azure AD Plugin: Validation Error, "
+                f"{PLUGIN_NAME}: Validation Error, "
                 f"error in validating credentials {repr(err)}."
             )
             return ValidationResult(
@@ -804,7 +801,7 @@ class MicrosoftAzureADPlugin(PluginBase):
                 message="Validation Error, error in validating credentials.",
             )
         except Exception as e:
-            self.logger.error(f"Microsoft Azure AD, Unexpected Exception: {e}")
+            self.logger.error(f"{PLUGIN_NAME}: Unexpected Exception: {e}")
             return ValidationResult(
                 success=False,
                 message="Validation Error (Check logs for more details).",
@@ -832,6 +829,7 @@ class MicrosoftAzureADPlugin(PluginBase):
         # get the top 1 user from Microsoft Graph for checking
         # whether we are connected to the API
         query_endpoint = "https://graph.microsoft.com/v1.0/users?$top=1"
+
         all_agent_resp = requests.get(
             query_endpoint,
             headers=add_user_agent(headers),
@@ -839,14 +837,14 @@ class MicrosoftAzureADPlugin(PluginBase):
             verify=self.ssl_validation,
         )
         if all_agent_resp.status_code == 401:
-            raise requests.HTTPError("Invalid base url.")
+            raise requests.HTTPError(f"{PLUGIN_NAME}: Invalid base url.")
 
         agent_resp_json = self.handle_error(all_agent_resp)
         errors = agent_resp_json.get("errors")
         if errors:
             err_msg = errors[0].get("message", "")
             raise requests.HTTPError(
-                f"Plugin: Microsoft Azure Unable to Fetch Agents, "
+                f"{PLUGIN_NAME}: Microsoft Azure Unable to Fetch Agents, "
                 f"Error: {err_msg}."
             )
         return agent_resp_json
@@ -861,6 +859,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             "https://graph.microsoft.com/v1.0/identityProtection/riskyUsers?$top="
             + PAGE_RECORD_SCORE
         )
+
         headers = self.reload_auth_token(self.configuration)
         headers["Content-Type"] = "application/json"
 
@@ -880,7 +879,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             if auth_errors:
                 err_msg = auth_errors[0].get("message", "")
                 raise requests.HTTPError(
-                    "Plugin: Microsoft Azure AD unable to get all users. "
+                    f"{PLUGIN_NAME}: unable to get all users. "
                     f"Error: {err_msg}."
                 )
 
@@ -889,12 +888,20 @@ class MicrosoftAzureADPlugin(PluginBase):
 
             # We get all the user id and store it in total user id list
             for each_user in current_user_list:
-                currRecord = Record(
-                    uid=each_user.get("userPrincipalName"),
-                    type=RecordType.USER,
-                    score=None,
-                )
-                total_records.append(currRecord)
+                try:
+                    currRecord = Record(
+                        uid=each_user.get(
+                            "userPrincipalName",
+                        ),
+                        type=RecordType.USER,
+                        score=None,
+                    )
+                    total_records.append(currRecord)
+                except ValidationError as err:
+                    self.logger.error(
+                        message=f"{PLUGIN_NAME}: Skipping user with id {each_user.get('id', 'User ID Not Found.')}.",
+                        details=f"Error Details: {err}. \nRecord Data: {each_user}",
+                    )
 
             # if number of groups is less than page size, we know that
             # this is the last page of the request. Hence, we break
@@ -943,7 +950,7 @@ class MicrosoftAzureADPlugin(PluginBase):
             if auth_errors:
                 err_msg = auth_errors[0].get("message", "")
                 raise requests.HTTPError(
-                    "Plugin: Microsoft Azure AD unable to get all users. "
+                    f"{PLUGIN_NAME}: unable to get all users. "
                     f"Error: {err_msg}."
                 )
 
@@ -972,25 +979,31 @@ class MicrosoftAzureADPlugin(PluginBase):
 
         if score_users:
             for key, value in score_users.items():
-                if (
-                    value == "none"
-                    or value == "hidden"
-                    or value == "unknownFutureValue"
-                ):
-                    total_scores.append(
-                        Record(uid=key, type=RecordType.USER, score=None)
-                    )
-                elif value == "low":
-                    total_scores.append(
-                        Record(uid=key, type=RecordType.USER, score=875)
-                    )
-                elif value == "medium":
-                    total_scores.append(
-                        Record(uid=key, type=RecordType.USER, score=625)
-                    )
-                elif value == "high":
-                    total_scores.append(
-                        Record(uid=key, type=RecordType.USER, score=375)
+                try:
+                    if (
+                        value == "none"
+                        or value == "hidden"
+                        or value == "unknownFutureValue"
+                    ):
+                        total_scores.append(
+                            Record(uid=key, type=RecordType.USER, score=None)
+                        )
+                    elif value == "low":
+                        total_scores.append(
+                            Record(uid=key, type=RecordType.USER, score=875)
+                        )
+                    elif value == "medium":
+                        total_scores.append(
+                            Record(uid=key, type=RecordType.USER, score=625)
+                        )
+                    elif value == "high":
+                        total_scores.append(
+                            Record(uid=key, type=RecordType.USER, score=375)
+                        )
+                except ValidationError as error:
+                    self.logger.error(
+                        message=f"{PLUGIN_NAME}: Error occurred while fetching score for user {key}.",
+                        details=f"Error details: {error}",
                     )
 
         return total_scores
@@ -1012,34 +1025,33 @@ class MicrosoftAzureADPlugin(PluginBase):
                 return resp.json()
             except ValueError:
                 raise MicrosoftAzureADException(
-                    "Plugin: Microsoft Azure AD, "
+                    f"{PLUGIN_NAME}: "
                     "Exception occurred while parsing JSON response."
                 )
         elif resp.status_code == 204:
             return
         elif resp.status_code == 401:
             raise MicrosoftAzureADException(
-                "Plugin: Microsoft Azure AD, "
+                f"{PLUGIN_NAME}: "
                 "Received exit code 401, Authentication Error."
             )
         elif resp.status_code == 403:
             raise MicrosoftAzureADException(
-                "Plugin: Microsoft Azure AD, "
-                "Received exit code 403, Forbidden User."
+                f"{PLUGIN_NAME}: Received exit code 403, Forbidden User."
             )
         elif resp.status_code >= 400 and resp.status_code < 500:
             raise MicrosoftAzureADException(
-                f"Plugin: Microsoft Azure AD, "
+                f"{PLUGIN_NAME}: "
                 f"Received exit code {resp.status_code}, HTTP client Error."
             )
         elif resp.status_code >= 500 and resp.status_code < 600:
             raise MicrosoftAzureADException(
-                f"Plugin: Microsoft Azure AD, "
+                f"{PLUGIN_NAME}: "
                 f"Received exit code {resp.status_code}, HTTP server Error."
             )
         else:
             raise MicrosoftAzureADException(
-                f"Plugin: Microsoft Azure AD, "
+                f"{PLUGIN_NAME}: "
                 f"Received exit code {resp.status_code}, HTTP Error."
             )
 
@@ -1048,11 +1060,11 @@ class MicrosoftAzureADPlugin(PluginBase):
             return one_request()
         except requests.exceptions.ProxyError:
             raise requests.HTTPError(
-                "Plugin: Microsoft Azure AD, invalid proxy configuration."
+                f"{PLUGIN_NAME}: invalid proxy configuration."
             )
         except requests.exceptions.ConnectionError:
             requests.HTTPError(
-                "Plugin: Microsoft Azure AD, unable to establish connection "
+                f"{PLUGIN_NAME}: unable to establish connection "
                 "with Microsoft Azure AD platform. "
                 "Proxy server or Microsoft Azure AD is not reachable."
             )
