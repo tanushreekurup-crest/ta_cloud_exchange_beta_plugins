@@ -1,6 +1,8 @@
 # 1.1.2
 ## Added
 - Added error handling for invalid users.
+## Changed
+- Optimized performance of execute action.
 
 # 1.1.1
 ## Changed
