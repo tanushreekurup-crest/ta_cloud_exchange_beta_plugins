@@ -1,7 +1,7 @@
 {
     "name": "AWS CloudTrail Lake",
     "id": "cloudtrail",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "mapping": "AWS CloudTrail Lake Default Mappings",
     "types": [
         "alerts",
@@ -33,6 +33,24 @@
             "default": "",
             "mandatory": true,
             "description": "ARN of the channel to send events/alerts to one or more event data stores in CloudTrail."
+        },
+        {
+            "label": "Add Additional Data",
+            "key": "add_additional_data",
+            "type": "choice",
+            "choices": [
+                {
+                    "key": "Yes",
+                    "value": "Yes"
+                },
+                {
+                    "key": "No",
+                    "value": "No"
+                }
+            ],
+            "default": "No",
+            "mandatory": true,
+            "description": "Add unmapped fields received from Netskope to 'additionalEventData' field in CloudTrail."
         }
     ]
 }

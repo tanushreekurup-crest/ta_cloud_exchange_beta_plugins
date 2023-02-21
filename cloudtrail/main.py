@@ -257,9 +257,10 @@ class CloudTrailPlugin(PluginBase):
                 subtype_mapping = self.get_subtype_mapping(
                     cloudtrail_mappings[data_type], subtype
                 )
-                mapped_fields = ["_id"]
-                for mapping_field in subtype_mapping.get("extension","").values():
-                    mapped_fields.append(mapping_field.get("mapping_field",""))
+                if self.configuration.get("add_additional_data") == "Yes":
+                    mapped_fields = ["_id"]
+                    for mapping_field in subtype_mapping.get("extension", "").values():
+                        mapped_fields.append(mapping_field.get("mapping_field", ""))
             except KeyError as err:
                 self.logger.warn(
                     f"{PLUGIN}: Subtype {subtype} is not supported by configured mapping file. "
@@ -292,9 +293,26 @@ class CloudTrailPlugin(PluginBase):
                 transformed_log = cef_generator.get_cef_event(
                     extension, data_type, subtype
                 )
-                transformed_log["userIdentity"] = transformed_log.get("userIdentity", {})
-                transformed_log["userIdentity"]["details"] = {"access_method": data.get("access_method", None)}
-                transformed_log["recipientAccountId"] = self.configuration["channel_arn"].split(":")[4] # extract AWS Account ID from the Channel ARN
+
+                # adding all the unmapped  data to a seperate dictionary
+                if self.configuration.get("add_additional_data") == "Yes":
+                    additional_data = {}
+                    for key, value in data.items():
+                        if key not in mapped_fields:
+                            additional_data[key] = value
+
+                    # sending additional unmapped data in the field additionalEventData in cloudtrail
+                    transformed_log["additionalEventData"] = additional_data
+
+                transformed_log["userIdentity"] = transformed_log.get(
+                    "userIdentity", {}
+                )
+                transformed_log["userIdentity"]["details"] = {
+                    "access_method": data.get("access_method", None)
+                }
+                transformed_log["recipientAccountId"] = self.configuration[
+                    "channel_arn"
+                ].split(":")[4]  # extract AWS Account ID from the Channel ARN
                 transformed_log["eventTime"] = str(
                     time.strftime(
                         "%Y-%m-%dT%H:%M:%SZ",
@@ -305,6 +323,7 @@ class CloudTrailPlugin(PluginBase):
                     f"netskope{data_type.rstrip(data_type[-1])}"
                     f".{(subtype.replace(' ', '')).lower()}"
                 )
+
                 audit_event = {
                     "id": data["_id"],
                     "eventData": json.dumps(transformed_log),
@@ -327,7 +346,7 @@ class CloudTrailPlugin(PluginBase):
 
     def chunks(self, transformed_data):
         """Divide list of transformed data into chunks of 1mb each"""
-        temp_chunks= []
+        temp_chunks = []
         size_of_chunk = 0
         chunk_length_count = 0
         for data in transformed_data:
@@ -404,48 +423,77 @@ class CloudTrailPlugin(PluginBase):
 
         if (
             "aws_public_key" not in configuration
-            or not isinstance(configuration["aws_public_key"], str)
             or not configuration["aws_public_key"].strip()
         ):
             self.logger.error(
                 f"{PLUGIN}: Validation error occurred. "
-                "Error: Invalid AWS Public Key found in the "
+                "Error: AWS Access Key ID cannot be empty."
+            )
+            return ValidationResult(
+                success=False, message="AWS Access Key ID cannot be empty."
+            )
+
+        elif (
+            not isinstance(configuration["aws_public_key"], str)
+        ):
+            self.logger.error(
+                f"{PLUGIN}: Validation error occurred. "
+                "Error: Invalid AWS Access Key ID found in the "
                 "configuration parameters."
             )
             return ValidationResult(
-                success=False, message="Invalid AWS Public Key provided."
+                success=False, message="Invalid AWS Access Key ID provided."
             )
 
         if (
             "aws_private_key" not in configuration
-            or not isinstance(configuration["aws_private_key"], str)
             or not configuration["aws_private_key"].strip()
         ):
             self.logger.error(
                 f"{PLUGIN}: Validation error occurred. "
-                "Error: Invalid AWS Private Key found in the "
+                "Error: AWS Secret Access Key cannot be empty."
+            )
+            return ValidationResult(
+                success=False, message="AWS Secret Access Key cannot be empty."
+            )
+
+        elif (
+            not isinstance(configuration["aws_private_key"], str)
+        ):
+            self.logger.error(
+                f"{PLUGIN}: Validation error occurred. "
+                "Error: Invalid AWS Secret Access Key found in the "
                 "configuration parameters."
             )
             return ValidationResult(
-                success=False, message="Invalid AWS Private Key provided."
+                success=False, message="Invalid AWS Secret Access Key provided."
             )
 
         if (
             "channel_arn" not in configuration
-            or not isinstance(configuration["channel_arn"], str)
-            or not configuration["channel_arn"].strip()
+            or not configuration["channel_arn"]
         ):
             self.logger.error(
                 f"{PLUGIN}: Validation error occurred. "
-                "Error: Channel Arn should be a non-empty string."
+                "Error: Channel Arn cannot be empty."
             )
             return ValidationResult(
-                success=False, message="Channel ARN cannot be empty."
+                success=False, message="Channel ARN is a required parameter."
+            )
+        elif (
+            not isinstance(configuration["channel_arn"], str)
+        ):
+            self.logger.error(
+                f"{PLUGIN}: Validation error occurred. "
+                "Error: Value of Channel Arn should be a string."
+            )
+            return ValidationResult(
+                success=False, message="Invald Channel ARN provided."
             )
         elif not (
             re.match(
-                '^arn:aws:cloudtrail:\w+(?:-\w+)+:\d{12}:channel\/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+$', #^[a-zA-Z0-9._/\-:]+$
-                configuration["channel_arn"]
+                "^arn:aws:cloudtrail:\w+(?:-\w+)+:\d{12}:channel\/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+$",  # ^[a-zA-Z0-9._/\-:]+$
+                configuration["channel_arn"],
             )
         ):
             self.logger.error(
@@ -454,7 +502,39 @@ class CloudTrailPlugin(PluginBase):
             )
             return ValidationResult(
                 success=False,
-                message="Channel ARN provided is not in the correct format."
+                message="Channel ARN provided is not in the correct format.",
+            )
+
+        if (
+            "add_additional_data" not in configuration
+            or not configuration.get("add_additional_data", "No").strip()
+        ):
+            self.logger.error(
+                f"{PLUGIN}: Validation error occurred. "
+                "Error: Add Additional Data is a required field."
+            )
+            return ValidationResult(
+                success=False, message="Add Additional Data is a required field."
+            )
+
+        elif (
+            not isinstance(configuration.get("add_additional_data", "No"), str)
+        ):
+            self.logger.error(
+                f"{PLUGIN}: Validation error occurred. "
+                "Error: Value of Add Addiitonal Data field should be a string."
+            )
+            return ValidationResult(
+                success=False, message="Invalid value for Add Addiitonal Data provided."
+            )
+        elif configuration.get("add_additional_data", "No") not in ["Yes", "No"]:
+            self.logger.error(
+                f"{PLUGIN}: Validation error occurred "
+                "Error: Invalid value for Add Addiitonal Data provided. Allowed values are 'Yes' or 'No'."
+            )
+            return ValidationResult(
+                success=False,
+                message="Invalid value for Add Addiitonal Data provided. Allowed values are 'Yes' or 'No'.",
             )
 
         try:
@@ -572,7 +652,7 @@ class CloudTrailPlugin(PluginBase):
             aws_client = AWSCloudtrailClient(configuration, logger, proxy)
             # self.setenv(configuration)
             # creating client with service 'cloudtrail' to verify credentials
-            cloudtrail_client =  aws_client.get_cloudtrail_client("cloudtrail")
+            cloudtrail_client = aws_client.get_cloudtrail_client("cloudtrail")
             # creating client with service 'cloudtrail-data' to verify credentials
             aws_client.get_cloudtrail_client("cloudtrail-data")
             cloudtrail_client.get_channel(
