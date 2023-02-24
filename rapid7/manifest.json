@@ -1,8 +1,8 @@
 {
     "name": "Rapid7",
     "id": "rapid7",
-    "version": "2.0.1",
-    "mapping": "Rapid7 Default Mappings",
+    "version": "2.1.0",
+    "mapping": "Rapid7 Default Mappings Beta",
     "types": [
         "alerts",
         "events",
