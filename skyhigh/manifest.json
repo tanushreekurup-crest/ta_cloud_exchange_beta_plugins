@@ -1,7 +1,7 @@
 {
     "name": "Skyhigh CASB Published URL",
     "id": "skyhigh",
-    "version": "1.0.0",
+    "version": "1.0.0-beta",
     "description": "This plugin is used to fetch URLs, FQDN, and IP Addresses from the Skyhigh CASB Published URL. This plugin does not support pushing indicators to Skyhigh.",
     "patch_supported": true,
     "push_supported": false,
