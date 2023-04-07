@@ -1,6 +1,6 @@
 {
-    "name": "CrowdStrike Identity Protect",
-    "description": "Fetches users and their respective scores from the CrowdStrike Identity Protection platform.\n\n URE score calculation => |(1 - (CrowdStrike Identity Protection Risk Score))|*1000",
+    "name": "CrowdStrike Falcon Identity Protection",
+    "description": "Fetches users and their respective scores from the CrowdStrike Falcon Identity Protection platform.\n\n URE score calculation => |(1 - (CrowdStrike Falcon Identity Protection Risk Score))|*1000",
     "id": "crowdstrike_identity_protect",
     "type": [
         "user"
