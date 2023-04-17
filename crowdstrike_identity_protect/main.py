@@ -30,7 +30,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-"""CrowdStrike Identity Protect URE plugin."""
+"""CrowdStrike Falcon Identity Protection URE plugin."""
 import json
 import os
 import time
@@ -57,12 +57,12 @@ class CrowdStrikeIdentityProtectException(Exception):
 
 
 BATCH_SIZE = 1000
-PLUGIN_NAME = "URE CrowdStrike Identity Protect Plugin"
+PLUGIN_NAME = "URE CrowdStrike Falcon Identity Protection"
 DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 class CrowdStrikeIdentityProtectPlugin(PluginBase):
-    """CrowdStrike Identity Protect URE plugin implementation."""
+    """CrowdStrike Falcon Identity Protection URE plugin implementation."""
 
     def __init__(
         self,
@@ -213,7 +213,7 @@ class CrowdStrikeIdentityProtectPlugin(PluginBase):
             raise CrowdStrikeIdentityProtectException(exp)
 
     def _get_query(self):
-        """Get Query to fetch users from CrowdStrike Identity Protection platform."""
+        """Get Query to fetch users from CrowdStrike Falcon Identity Protection platform."""
         return """query ($after: Cursor, $creationTime: DateTimeInput) {
                     entities(types: [USER], sortKey: CREATION_TIME, sortOrder: DESCENDING, first: 1000, accountCreationStartTime: $creationTime, after: $after,archived: false) {
                         nodes {
@@ -275,9 +275,9 @@ class CrowdStrikeIdentityProtectPlugin(PluginBase):
         return users
 
     def fetch_records(self):
-        """Get all the records from CrowdStrike Identity Protection platform."""
+        """Get all the records from CrowdStrike Falcon Identity Protection platform."""
         self.logger.info(
-            f"{self.log_prefix}: Fetching records from CrowdStrike Identity Protection platform."
+            f"{self.log_prefix}: Fetching records from CrowdStrike Falcon Identity Protection platform."
         )
         falcon = self._get_falcon(
             base_url=self.configuration.get("base_url", "").strip(),
@@ -337,7 +337,7 @@ class CrowdStrikeIdentityProtectPlugin(PluginBase):
                 break
         self.logger.info(
             f"{self.log_prefix}: Successfully fetched {len(users)} users"
-            " from CrowdStrike Identity Protection platform."
+            " from CrowdStrike Falcon Identity Protection platform."
         )
         return users
 
@@ -601,7 +601,7 @@ class CrowdStrikeIdentityProtectPlugin(PluginBase):
 
             return ValidationResult(
                 success=True,
-                message="Validation successful for CrowdStrike Identity Protect Plugin.",
+                message="Validation successful for CrowdStrike Falcon Identity Protection Plugin.",
             )
         except CrowdStrikeIdentityProtectException as exp:
             err_msg = str(exp)
