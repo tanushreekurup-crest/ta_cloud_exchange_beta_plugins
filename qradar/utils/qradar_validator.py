@@ -37,14 +37,16 @@ import io
 import csv
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
+from .qradar_constants import PLUGIN_NAME
 
 
 class QRadarValidator(object):
     """QRadar validator class."""
 
-    def __init__(self, logger):
+    def __init__(self, logger, name):
         """Initialize."""
         super().__init__()
+        self.name = name
         self.logger = logger
 
     def validate_qradar_port(self, qradar_port):
@@ -105,7 +107,7 @@ class QRadarValidator(object):
                         ".*": {
                             "type": "array",
                         }
-                    }
+                    },
                 },
             },
         }
@@ -143,8 +145,7 @@ class QRadarValidator(object):
             validate(instance=mappings, schema=schema)
         except JsonSchemaValidationError as err:
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
-                "validating JSON schema: {}".format(err)
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: validating JSON schema: {err}"
             )
             return False
 
@@ -158,9 +159,8 @@ class QRadarValidator(object):
                         self.validate_taxonomy(subtype_taxonomy)
                     except JsonSchemaValidationError as err:
                         self.logger.error(
-                            "QRadar Plugin: Validation error occurred. Error: "
-                            'while validating JSON schema for type "{}" and subtype "{}": '
-                            "{}".format(data_type, subtype, err)
+                            f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
+                            f'while validating JSON schema for type "{data_type}" and subtype "{subtype}: {err}'
                         )
                         return False
         return True
@@ -181,9 +181,7 @@ class QRadarValidator(object):
                 return True
         except Exception as err:
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: {}".format(
-                    str(err)
-                )
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: {err}"
             )
 
         return False
