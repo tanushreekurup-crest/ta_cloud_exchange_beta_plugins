@@ -38,6 +38,7 @@ import logging.handlers
 import threading
 import socket
 import json
+import os
 from typing import List
 from jsonpath import jsonpath
 
@@ -72,6 +73,39 @@ from .utils.log_rhythm_ssl import (
 
 class LogRhythmPlugin(PluginBase):
     """The LogRhythm plugin implementation class."""
+
+    def __init__(
+        self,
+        name,
+        *args,
+        **kwargs,
+    ):
+        """Initialize SyslogPlugin class."""
+        super().__init__(
+            name,
+            *args,
+            **kwargs,
+        )
+        self.plugin_name, self.plugin_version = self._get_plugin_info()
+        self.log_prefix = f"CLS {self.plugin_name} [{name}]"
+
+    def _get_plugin_info(self) -> tuple:
+        """Get plugin name and version from manifest.
+        Returns:
+            tuple: Tuple of plugin's name and version fetched from manifest.
+        """
+        try:
+            file_path = os.path.join(
+                str(os.path.dirname(os.path.abspath(__file__))),
+                "manifest.json",
+            )
+            with open(file_path, "r") as manifest:
+                manifest_json = json.load(manifest)
+                plugin_name = manifest_json.get("name", "LogRhythm")
+                plugin_version = manifest_json.get("version", "3.0.0")
+                return (plugin_name, plugin_version)
+        except Exception:
+            return ("LogRhythm", "3.0.0")
 
     def get_mapping_value_from_json_path(self, data, json_path):
         """To Fetch the value from given JSON object using given JSON path.
@@ -238,6 +272,16 @@ class LogRhythmPlugin(PluginBase):
                 if (
                     extension_mapping["mapping_field"] in data
                 ):  # case #1 and case #4
+                    if (
+                        extension_mapping.get("transformation") == "Time Stamp"
+                        and data[extension_mapping["mapping_field"]]
+                    ):
+                        try:
+                            return int(
+                                data[extension_mapping["mapping_field"]]
+                            )
+                        except Exception:
+                            pass
                     return self.get_mapping_value_from_field(
                         data, extension_mapping["mapping_field"]
                     )
@@ -285,19 +329,17 @@ class LogRhythmPlugin(PluginBase):
                 ) = get_log_rhythm_mappings(self.mappings, "json")
             except KeyError as err:
                 self.logger.error(
-                    "Error in log_rhythm mapping file. Error: {}".format(
-                        str(err)
-                    )
+                    f"{self.log_prefix}: Error in log_rhythm mapping file. Error: {err}"
                 )
                 raise
             except MappingValidationError as err:
-                self.logger.error(str(err))
+                self.logger.error(
+                    f"{self.log_prefix}: An error occurred while validating mappings. Error: {err}"
+                )
                 raise
             except Exception as err:
                 self.logger.error(
-                    "An error occurred while mapping data using given json mappings. Error: {}".format(
-                        str(err)
-                    )
+                    f"{self.log_prefix}: An error occurred while mapping data using given json mappings. Error: {err}"
                 )
                 raise
 
@@ -307,21 +349,19 @@ class LogRhythmPlugin(PluginBase):
                 )
             except Exception:
                 self.logger.error(
-                    'Error occurred while retrieving mappings for datatype: "{}" (subtype "{}"). '
-                    "Transformation will be skipped.".format(
-                        data_type, subtype
-                    )
+                    f'{self.log_prefix}: Error occurred while retrieving mappings for datatype: "{data_type}" (subtype "{subtype}"). '
+                    "Transformation will be skipped."
                 )
                 raise
 
             transformed_data = []
 
             for data in raw_data:
-                transformed_data.append(
-                    self.map_json_data(
-                        subtype_mapping, data, data_type, subtype
-                    )
+                mapped_dict = self.map_json_data(
+                    subtype_mapping, data, data_type, subtype
                 )
+                if mapped_dict:
+                    transformed_data.append(mapped_dict)
 
             return transformed_data
 
@@ -334,19 +374,17 @@ class LogRhythmPlugin(PluginBase):
                 ) = get_log_rhythm_mappings(self.mappings, data_type)
             except KeyError as err:
                 self.logger.error(
-                    "Error in log_rhythm mapping file. Error: {}".format(
-                        str(err)
-                    )
+                    f"{self.log_prefix}: Error in log_rhythm mapping file. Error: {err}"
                 )
                 raise
             except MappingValidationError as err:
-                self.logger.error(str(err))
+                self.logger.error(
+                    f"{self.log_prefix}: An error occurred while validating mappings. Error: {err}"
+                )
                 raise
             except Exception as err:
                 self.logger.error(
-                    "An error occurred while mapping data using given json mappings. Error: {}".format(
-                        str(err)
-                    )
+                    f"{self.log_prefix}: An error occurred while mapping data using given json mappings. Error: {err}"
                 )
                 raise
 
@@ -355,11 +393,11 @@ class LogRhythmPlugin(PluginBase):
                 delimiter,
                 cef_version,
                 self.logger,
+                self.log_prefix,
             )
 
             transformed_data = []
             for data in raw_data:
-
                 # First retrieve the mapping of subtype being transformed
                 try:
                     subtype_mapping = self.get_subtype_mapping(
@@ -367,10 +405,8 @@ class LogRhythmPlugin(PluginBase):
                     )
                 except Exception:
                     self.logger.error(
-                        'Error occurred while retrieving mappings for subtype "{}". '
-                        "Transformation of current record will be skipped.".format(
-                            subtype
-                        )
+                        f'{self.log_prefix}: Error occurred while retrieving mappings for subtype "{subtype}". '
+                        "Transformation of current record will be skipped."
                     )
                     continue
 
@@ -381,10 +417,8 @@ class LogRhythmPlugin(PluginBase):
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: Error occurred while creating CEF header: {}. Transformation of "
-                        "current record will be skipped.".format(
-                            data_type, subtype, str(err)
-                        )
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- Error occurred while creating CEF header: {err}. Transformation of "
+                        "current record will be skipped."
                     )
                     continue
 
@@ -394,37 +428,32 @@ class LogRhythmPlugin(PluginBase):
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: Error occurred while creating CEF extension: {}. Transformation of "
-                        "the current record will be skipped".format(
-                            data_type, subtype, str(err)
-                        )
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- Error occurred while creating CEF extension: {err}. Transformation of "
+                        "the current record will be skipped"
                     )
                     continue
 
                 try:
-                    transformed_data.append(
-                        cef_generator.get_cef_event(
-                            data,
-                            header,
-                            extension,
-                            data_type,
-                            subtype,
-                            self.configuration.get(
-                                "log_source_identifier", "netskopece"
-                            ),
-                        )
+                    cef_generated_event = cef_generator.get_cef_event(
+                        data,
+                        header,
+                        extension,
+                        data_type,
+                        subtype,
+                        self.configuration.get(
+                            "log_source_identifier", "netskopece"
+                        ),
                     )
+                    if cef_generated_event:
+                        transformed_data.append(cef_generated_event)
                 except EmptyExtensionError:
                     self.logger.error(
-                        "[{}][{}]: Got empty extension during transformation."
-                        "Transformation of current record will be skipped".format(
-                            data_type, subtype
-                        )
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- Got empty extension during transformation."
+                        "Transformation of current record will be skipped"
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: An error occurred during transformation."
-                        " Error: {}".format(data_type, subtype, str(err))
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- An error occurred during transformation. Error: {err}"
                     )
             return transformed_data
 
@@ -477,21 +506,21 @@ class LogRhythmPlugin(PluginBase):
             syslogger = self.init_handler(self.configuration)
         except Exception as err:
             self.logger.error(
-                "Error occurred during initializing connection. Error: {}".format(
-                    str(err)
-                )
+                f"{self.log_prefix}: Error occurred during initializing connection. Error: {err}"
             )
             raise
 
         # Log the transformed data to given log_rhythm server
         for data in transformed_data:
             try:
-                syslogger.info(data)
-                syslogger.handlers[0].flush()
+                if data:
+                    syslogger.info(
+                        json.dumps(data) if isinstance(data, dict) else data
+                    )
+                    syslogger.handlers[0].flush()
             except Exception as err:
                 self.logger.error(
-                    "Error occurred during data ingestion."
-                    " Error: {}. Record will be skipped".format(str(err))
+                    f"{self.log_prefix}: Error occurred during data ingestion. Error: {err}. Record will be skipped"
                 )
 
         # Clean up
@@ -501,7 +530,7 @@ class LogRhythmPlugin(PluginBase):
             del syslogger
         except Exception as err:
             self.logger.error(
-                "Error occurred during Clean up. Error: {}".format(str(err))
+                f"{self.log_prefix}: Error occurred during Clean up. Error: {err}"
             )
 
     def test_server_connectivity(self, configuration):
@@ -510,7 +539,7 @@ class LogRhythmPlugin(PluginBase):
             syslogger = self.init_handler(configuration)
         except Exception as err:
             self.logger.error(
-                "Error occurred while establishing connection with log_rhythm server. Make sure "
+                f"{self.log_prefix}: Error occurred while establishing connection with log_rhythm server. Make sure "
                 "you have provided correct log_rhythm server and port."
             )
             raise err
@@ -523,14 +552,14 @@ class LogRhythmPlugin(PluginBase):
 
     def validate(self, configuration: dict) -> ValidationResult:
         """Validate the configuration parameters dict."""
-        log_rhythm_validator = LogRhythmValidator(self.logger)
+        log_rhythm_validator = LogRhythmValidator(self.logger, self.log_prefix)
 
         if (
             "log_rhythm_server" not in configuration
             or not configuration["log_rhythm_server"].strip()
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "LogRhythm Server IP/FQDN is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -539,7 +568,7 @@ class LogRhythmPlugin(PluginBase):
 
         elif type(configuration["log_rhythm_server"]) != str:
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid LogRhythm Server IP/FQDN found in the configuration parameters."
             )
             return ValidationResult(
@@ -550,7 +579,7 @@ class LogRhythmPlugin(PluginBase):
             or not configuration["log_rhythm_format"].strip()
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "LogRhythm Format is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -561,7 +590,7 @@ class LogRhythmPlugin(PluginBase):
             or configuration["log_rhythm_format"] not in SYSLOG_FORMATS
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid LogRhythm Format found in the configuration parameters."
             )
             return ValidationResult(
@@ -573,7 +602,7 @@ class LogRhythmPlugin(PluginBase):
             or not configuration["log_rhythm_protocol"].strip()
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "LogRhythm Protocol is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -585,7 +614,7 @@ class LogRhythmPlugin(PluginBase):
             or configuration["log_rhythm_protocol"] not in SYSLOG_PROTOCOLS
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid LogRhythm Protocol found in the configuration parameters."
             )
             return ValidationResult(
@@ -597,7 +626,7 @@ class LogRhythmPlugin(PluginBase):
             or not configuration["log_rhythm_port"]
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "LogRhythm Port is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -608,7 +637,7 @@ class LogRhythmPlugin(PluginBase):
             configuration["log_rhythm_port"]
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid LogRhythm Port found in the configuration parameters."
             )
             return ValidationResult(
@@ -622,7 +651,7 @@ class LogRhythmPlugin(PluginBase):
             mappings
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid LogRhythm attribute mapping found in the configuration parameters."
             )
             return ValidationResult(
@@ -635,7 +664,7 @@ class LogRhythmPlugin(PluginBase):
             or not configuration["log_rhythm_certificate"].strip()
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "LogRhythm Certificate mapping is a required field when TLS is provided in the configuration parameters."
             )
             return ValidationResult(
@@ -647,7 +676,7 @@ class LogRhythmPlugin(PluginBase):
             and type(configuration["log_rhythm_certificate"]) != str
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid LogRhythm Certificate mapping found in the configuration parameters."
             )
             return ValidationResult(
@@ -659,7 +688,7 @@ class LogRhythmPlugin(PluginBase):
             or not configuration["log_source_identifier"].strip()
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Log Source Identifier is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -671,7 +700,7 @@ class LogRhythmPlugin(PluginBase):
             or " " in configuration["log_source_identifier"].strip()
         ):
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid Log Source Identifier found in the configuration parameters."
             )
             return ValidationResult(
@@ -684,7 +713,7 @@ class LogRhythmPlugin(PluginBase):
             self.test_server_connectivity(configuration)
         except Exception:
             self.logger.error(
-                "LogRhythm Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Connection to SIEM platform is not established."
             )
             return ValidationResult(
