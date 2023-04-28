@@ -1,8 +1,8 @@
 {
     "name": "Secureworks",
     "id": "secureworks",
-    "version": "1.0.0",
-    "mapping": "Secureworks Default Mappings",
+    "version": "2.0.0-beta",
+    "mapping": "Secureworks Default Mappings Beta",
     "types": [
         "alerts",
         "events",
