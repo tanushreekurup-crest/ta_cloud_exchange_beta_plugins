@@ -1,8 +1,8 @@
 {
   "name": "ArcSight",
   "id": "arcsight",
-  "version": "2.0.1",
-  "mapping": "ArcSight Default Mappings",
+  "version": "3.0.0-beta",
+  "mapping": "ArcSight Default Mappings Beta",
   "types": [
     "alerts",
     "events",
