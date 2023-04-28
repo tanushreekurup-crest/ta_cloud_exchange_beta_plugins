@@ -50,6 +50,7 @@ from netskope.integrations.cls.plugin_base import (
 from .utils.qradar_constants import (
     SYSLOG_FORMATS,
     SYSLOG_PROTOCOLS,
+    PLUGIN_NAME,
 )
 from .utils.qradar_validator import (
     QRadarValidator,
@@ -129,7 +130,7 @@ class QRadarPlugin(PluginBase):
         """
         headers = {}
         mapping_variables = {}
-        if data_type != 'webtx':
+        if data_type != "webtx":
             helper = AlertsHelper()
             tenant = helper.get_tenant_cls(self.source)
             mapping_variables = {"$tenant_name": tenant.name}
@@ -236,6 +237,16 @@ class QRadarPlugin(PluginBase):
                 if (
                     extension_mapping["mapping_field"] in data
                 ):  # case #1 and case #4
+                    if (
+                        extension_mapping.get("transformation") == "Time Stamp"
+                        and data[extension_mapping["mapping_field"]]
+                    ):
+                        try:
+                            return int(
+                                data[extension_mapping["mapping_field"]]
+                            )
+                        except Exception:
+                            pass
                     return self.get_mapping_value_from_field(
                         data, extension_mapping["mapping_field"]
                     )
@@ -258,7 +269,7 @@ class QRadarPlugin(PluginBase):
         :param logger: Logger object for logging purpose
         :return: Mapped data based on fields given in mapping file
         """
-        
+
         if mappings == []:
             return data
 
@@ -266,7 +277,7 @@ class QRadarPlugin(PluginBase):
         for key in mappings:
             if key in data:
                 mapped_dict[key] = data[key]
-        
+
         return mapped_dict
 
     def transform(self, raw_data, data_type, subtype) -> List:
@@ -277,21 +288,21 @@ class QRadarPlugin(PluginBase):
 
             try:
                 delimiter, cef_version, qradar_mappings = get_qradar_mappings(
-                    self.mappings, "json"
+                    self.mappings, "json", self.name
                 )
             except KeyError as err:
                 self.logger.error(
-                    "Error in qradar mapping file. Error: {}".format(str(err))
+                    f"{PLUGIN_NAME}[{self.name}]: Error in qradar mapping file. Error: {err}"
                 )
                 raise
             except MappingValidationError as err:
-                self.logger.error(str(err))
+                self.logger.error(
+                    f"{PLUGIN_NAME}[{self.name}]: An error occurred while validating mappings. Error: {err}"
+                )
                 raise
             except Exception as err:
                 self.logger.error(
-                    "An error occurred while mapping data using given json mappings. Error: {}".format(
-                        str(err)
-                    )
+                    f"{PLUGIN_NAME}[{self.name}]: An error occurred while mapping data using given json mappings. Error: {err}"
                 )
                 raise
 
@@ -301,54 +312,50 @@ class QRadarPlugin(PluginBase):
                 )
             except Exception:
                 self.logger.error(
-                    'Error occurred while retrieving mappings for datatype: "{}" (subtype "{}"). '
-                    "Transformation will be skipped.".format(
-                        data_type, subtype
-                    )
+                    f'{PLUGIN_NAME}[{self.name}]: Error occurred while retrieving mappings for datatype: "{data_type}" (subtype "{subtype}"). '
+                    "Transformation will be skipped."
                 )
                 raise
 
             transformed_data = []
 
             for data in raw_data:
-                transformed_data.append(
-                    self.map_json_data(subtype_mapping, data, data_type, subtype)
+                mapped_dict = self.map_json_data(
+                    subtype_mapping, data, data_type, subtype
                 )
+                if mapped_dict:
+                    transformed_data.append(mapped_dict)
 
             return transformed_data
-                
 
         else:
             try:
                 delimiter, cef_version, qradar_mappings = get_qradar_mappings(
-                    self.mappings, data_type
+                    self.mappings, data_type, self.name
                 )
             except KeyError as err:
                 self.logger.error(
-                    "Error in qradar mapping file. Error: {}".format(str(err))
+                    f"{PLUGIN_NAME}[{self.name}]: Error in qradar mapping file. Error: {err}"
                 )
+
                 raise
             except MappingValidationError as err:
-                self.logger.error(str(err))
+                self.logger.error(
+                    f"{PLUGIN_NAME}[{self.name}]: An error occurred while validating mappings. Error: {err}"
+                )
                 raise
             except Exception as err:
                 self.logger.error(
-                    "An error occurred while mapping data using given json mappings. Error: {}".format(
-                        str(err)
-                    )
+                    f"{PLUGIN_NAME}[{self.name}]: An error occurred while mapping data using given json mappings. Error: {err}"
                 )
                 raise
 
             cef_generator = CEFGenerator(
-                self.mappings,
-                delimiter,
-                cef_version,
-                self.logger,
+                self.mappings, delimiter, cef_version, self.logger, self.name
             )
 
             transformed_data = []
             for data in raw_data:
-
                 # First retrieve the mapping of subtype being transformed
                 try:
                     subtype_mapping = self.get_subtype_mapping(
@@ -356,10 +363,8 @@ class QRadarPlugin(PluginBase):
                     )
                 except Exception:
                     self.logger.error(
-                        'Error occurred while retrieving mappings for subtype "{}". '
-                        "Transformation of current record will be skipped.".format(
-                            subtype
-                        )
+                        f'{PLUGIN_NAME}[{self.name}]: Error occurred while retrieving mappings for subtype "{subtype}". '
+                        "Transformation of current record will be skipped."
                     )
                     continue
 
@@ -370,10 +375,8 @@ class QRadarPlugin(PluginBase):
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: Error occurred while creating CEF header: {}. Transformation of "
-                        "current record will be skipped.".format(
-                            data_type, subtype, str(err)
-                        )
+                        f"{PLUGIN_NAME}[{self.name}]([{data_type}][{subtype}]): Error occurred while creating CEF header: {err}. Transformation of "
+                        "current record will be skipped."
                     )
                     continue
 
@@ -383,37 +386,32 @@ class QRadarPlugin(PluginBase):
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: Error occurred while creating CEF extension: {}. Transformation of "
-                        "the current record will be skipped".format(
-                            data_type, subtype, str(err)
-                        )
+                        f"{PLUGIN_NAME}[{self.name}]([{data_type}][{subtype}]): Error occurred while creating CEF extension: {err}. Transformation of "
+                        "the current record will be skipped"
                     )
                     continue
 
                 try:
-                    transformed_data.append(
-                        cef_generator.get_cef_event(
-                            data,
-                            header,
-                            extension,
-                            data_type,
-                            subtype,
-                            self.configuration.get(
-                                "log_source_identifier", "netskopece"
-                            ),
-                        )
+                    cef_generated_event = cef_generator.get_cef_event(
+                        data,
+                        header,
+                        extension,
+                        data_type,
+                        subtype,
+                        self.configuration.get(
+                            "log_source_identifier", "netskopece"
+                        ),
                     )
+                    if cef_generated_event:
+                        transformed_data.append(cef_generated_event)
                 except EmptyExtensionError:
                     self.logger.error(
-                        "[{}][{}]: Got empty extension during transformation."
-                        "Transformation of current record will be skipped".format(
-                            data_type, subtype
-                        )
+                        f"{PLUGIN_NAME}[{self.name}]([{data_type}][{subtype}]): Got empty extension during transformation."
+                        "Transformation of current record will be skipped"
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: An error occurred during transformation."
-                        " Error: {}".format(data_type, subtype, str(err))
+                        f"{PLUGIN_NAME}[{self.name}][{data_type}][{subtype}]: An error occurred during transformation. Error: {err}"
                     )
             return transformed_data
 
@@ -466,21 +464,21 @@ class QRadarPlugin(PluginBase):
             syslogger = self.init_handler(self.configuration)
         except Exception as err:
             self.logger.error(
-                "Error occurred during initializing connection. Error: {}".format(
-                    str(err)
-                )
+                f"{PLUGIN_NAME}[{self.name}]: Error occurred during initializing connection. Error: {err}"
             )
             raise
 
         # Log the transformed data to given qradar server
         for data in transformed_data:
             try:
-                syslogger.info(data)
-                syslogger.handlers[0].flush()
+                if data:
+                    syslogger.info(
+                        json.dumps(data) if isinstance(data, dict) else data
+                    )
+                    syslogger.handlers[0].flush()
             except Exception as err:
                 self.logger.error(
-                    "Error occurred during data ingestion."
-                    " Error: {}. Record will be skipped".format(str(err))
+                    f"{PLUGIN_NAME}[{self.name}]: Error occurred during data ingestion. Error: {err}. Record will be skipped"
                 )
 
         # Clean up
@@ -490,7 +488,7 @@ class QRadarPlugin(PluginBase):
             del syslogger
         except Exception as err:
             self.logger.error(
-                "Error occurred during Clean up. Error: {}".format(str(err))
+                f"{PLUGIN_NAME}[{self.name}]: Error occurred during Clean up. Error: {err}"
             )
 
     def test_server_connectivity(self, configuration):
@@ -499,7 +497,7 @@ class QRadarPlugin(PluginBase):
             syslogger = self.init_handler(configuration)
         except Exception as err:
             self.logger.error(
-                "Error occurred while establishing connection with qradar server. Make sure "
+                f"{PLUGIN_NAME}[{self.name}]: Error occurred while establishing connection with qradar server. Make sure "
                 "you have provided correct qradar server and port."
             )
             raise err
@@ -512,13 +510,13 @@ class QRadarPlugin(PluginBase):
 
     def validate(self, configuration: dict) -> ValidationResult:
         """Validate the configuration parameters dict."""
-        qradar_validator = QRadarValidator(self.logger)
+        qradar_validator = QRadarValidator(self.logger, self.name)
         if (
             "qradar_server" not in configuration
             or not configuration["qradar_server"].strip()
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "QRadar Server IP/FQDN is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -526,7 +524,7 @@ class QRadarPlugin(PluginBase):
             )
         elif type(configuration["qradar_server"]) != str:
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid QRadar Server IP/FQDN found in the configuration parameters."
             )
             return ValidationResult(
@@ -537,7 +535,7 @@ class QRadarPlugin(PluginBase):
             or not configuration["qradar_format"].strip()
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "QRadar Format is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -548,7 +546,7 @@ class QRadarPlugin(PluginBase):
             or configuration["qradar_format"] not in SYSLOG_FORMATS
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid QRadar Format found in the configuration parameters."
             )
             return ValidationResult(
@@ -559,7 +557,7 @@ class QRadarPlugin(PluginBase):
             or not configuration["qradar_protocol"].strip()
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "QRadar Protocol is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -570,7 +568,7 @@ class QRadarPlugin(PluginBase):
             or configuration["qradar_protocol"] not in SYSLOG_PROTOCOLS
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid QRadar Protocol found in the configuration parameters."
             )
             return ValidationResult(
@@ -581,15 +579,17 @@ class QRadarPlugin(PluginBase):
             or not configuration["qradar_port"]
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "QRadar Port is a required field in the configuration parameters."
             )
             return ValidationResult(
                 success=False, message="QRadar Port is a required field."
             )
-        elif not qradar_validator.validate_qradar_port(configuration["qradar_port"]):
+        elif not qradar_validator.validate_qradar_port(
+            configuration["qradar_port"]
+        ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid QRadar Port found in the configuration parameters."
             )
             return ValidationResult(
@@ -601,7 +601,7 @@ class QRadarPlugin(PluginBase):
             mappings
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid QRadar attribute mapping found in the configuration parameters."
             )
             return ValidationResult(
@@ -613,7 +613,7 @@ class QRadarPlugin(PluginBase):
             or not configuration["qradar_certificate"].strip()
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "QRadar Certificate mapping is a required field when TLS is provided in the configuration parameters."
             )
             return ValidationResult(
@@ -625,7 +625,7 @@ class QRadarPlugin(PluginBase):
             and type(configuration["qradar_certificate"]) != str
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid QRadar Certificate mapping found in the configuration parameters."
             )
             return ValidationResult(
@@ -637,7 +637,7 @@ class QRadarPlugin(PluginBase):
             or not configuration["log_source_identifier"].strip()
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Log Source Identifier is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -649,7 +649,7 @@ class QRadarPlugin(PluginBase):
             or " " in configuration["log_source_identifier"].strip()
         ):
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Invalid Log Source Identifier found in the configuration parameters."
             )
             return ValidationResult(
@@ -661,7 +661,7 @@ class QRadarPlugin(PluginBase):
             self.test_server_connectivity(configuration)
         except Exception:
             self.logger.error(
-                "QRadar Plugin: Validation error occurred. Error: "
+                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
                 "Connection to SIEM platform is not established."
             )
             return ValidationResult(
@@ -670,6 +670,7 @@ class QRadarPlugin(PluginBase):
                 "Make sure you have provided correct QRadar Server, Port and QRadar Certificate(if required).",
             )
         return ValidationResult(success=True, message="Validation successful.")
+
     def chunk_size(self):
         """Chunk size to be ingested per thread."""
         return 2000
