@@ -206,8 +206,7 @@ def get_rapid7_mappings(mappings, data_type):
             validate_header(subtype_header)
         except JsonSchemaValidationError as err:
             raise MappingValidationError(
-                'Error occurred while validating rapid7 header for type "{}". '
-                "Error: {}".format(subtype, err)
+                'Error occurred while validating rapid7 header for type "{subtype}". Error: {err}'
             )
 
     # Validate the extension for each mapped subtype
@@ -217,8 +216,7 @@ def get_rapid7_mappings(mappings, data_type):
             validate_extension(subtype_extension)
         except JsonSchemaValidationError as err:
             raise MappingValidationError(
-                'Error occurred while validating rapid7 extension for type "{}". '
-                "Error: {}".format(subtype, err)
+                'Error occurred while validating rapid7 extension for type "{subtype}". Error: {err}'
             )
 
         # Validate each extension
@@ -227,8 +225,7 @@ def get_rapid7_mappings(mappings, data_type):
                 validate_extension_field(ext_dict)
             except JsonSchemaValidationError as err:
                 raise MappingValidationError(
-                    'Error occurred while validating rapid7 extension field "{}" for '
-                    'type "{}". Error: {}'.format(cef_field, subtype, err)
+                    'Error occurred while validating rapid7 extension field "{cef_field}" for type "{subtype}". Error: {err}'
                 )
 
     return mappings["delimiter"], mappings["cef_version"], mappings["taxonomy"]
