@@ -38,6 +38,7 @@ import logging.handlers
 import threading
 import socket
 import json
+import os
 from typing import List
 from jsonpath import jsonpath
 
@@ -72,6 +73,39 @@ from .utils.arcsight_ssl import (
 
 class ArcSightPlugin(PluginBase):
     """The ArcSight plugin implementation class."""
+
+    def __init__(
+        self,
+        name,
+        *args,
+        **kwargs,
+    ):
+        """Initialize SyslogPlugin class."""
+        super().__init__(
+            name,
+            *args,
+            **kwargs,
+        )
+        self.plugin_name, self.plugin_version = self._get_plugin_info()
+        self.log_prefix = f"CLS {self.plugin_name} [{name}]"
+
+    def _get_plugin_info(self) -> tuple:
+        """Get plugin name and version from manifest.
+        Returns:
+            tuple: Tuple of plugin's name and version fetched from manifest.
+        """
+        try:
+            file_path = os.path.join(
+                str(os.path.dirname(os.path.abspath(__file__))),
+                "manifest.json",
+            )
+            with open(file_path, "r") as manifest:
+                manifest_json = json.load(manifest)
+                plugin_name = manifest_json.get("name", "ArcSight")
+                plugin_version = manifest_json.get("version", "3.0.0")
+                return (plugin_name, plugin_version)
+        except Exception:
+            return ("ArcSight", "3.0.0")
 
     def get_mapping_value_from_json_path(self, data, json_path):
         """To Fetch the value from given JSON object using given JSON path.
@@ -238,6 +272,16 @@ class ArcSightPlugin(PluginBase):
                 if (
                     extension_mapping["mapping_field"] in data
                 ):  # case #1 and case #4
+                    if (
+                        extension_mapping.get("transformation") == "Time Stamp"
+                        and data[extension_mapping["mapping_field"]]
+                    ):
+                        try:
+                            return int(
+                                data[extension_mapping["mapping_field"]]
+                            )
+                        except Exception:
+                            pass
                     return self.get_mapping_value_from_field(
                         data, extension_mapping["mapping_field"]
                     )
@@ -260,7 +304,7 @@ class ArcSightPlugin(PluginBase):
         :param logger: Logger object for logging purpose
         :return: Mapped data based on fields given in mapping file
         """
-        
+
         if mappings == []:
             return data
 
@@ -268,7 +312,7 @@ class ArcSightPlugin(PluginBase):
         for key in mappings:
             if key in data:
                 mapped_dict[key] = data[key]
-        
+
         return mapped_dict
 
     def transform(self, raw_data, data_type, subtype) -> List:
@@ -278,22 +322,24 @@ class ArcSightPlugin(PluginBase):
                 return raw_data
 
             try:
-                delimiter, cef_version, arcsight_mappings = get_arcsight_mappings(
-                    self.mappings, "json"
-                )
+                (
+                    delimiter,
+                    cef_version,
+                    arcsight_mappings,
+                ) = get_arcsight_mappings(self.mappings, "json")
             except KeyError as err:
                 self.logger.error(
-                    "Error in arcsight mapping file. Error: {}".format(str(err))
+                    f"{self.log_prefix}: Error in arcsight mapping file. Error: {err}"
                 )
                 raise
             except MappingValidationError as err:
-                self.logger.error(str(err))
+                self.logger.error(
+                    f"{self.log_prefix}: An error occurred while validating mappings. Error: {err}"
+                )
                 raise
             except Exception as err:
                 self.logger.error(
-                    "An error occurred while mapping data using given json mappings. Error: {}".format(
-                        str(err)
-                    )
+                    f"{self.log_prefix}: An error occurred while mapping data using given json mappings. Error: {err}"
                 )
                 raise
 
@@ -303,41 +349,42 @@ class ArcSightPlugin(PluginBase):
                 )
             except Exception:
                 self.logger.error(
-                    'Error occurred while retrieving mappings for datatype: "{}" (subtype "{}"). '
-                    "Transformation will be skipped.".format(
-                        data_type, subtype
-                    )
+                    f'{self.log_prefix}: Error occurred while retrieving mappings for datatype: "{data_type}" (subtype "{subtype}"). '
+                    "Transformation will be skipped."
                 )
                 raise
 
             transformed_data = []
 
             for data in raw_data:
-                transformed_data.append(
-                    self.map_json_data(subtype_mapping, data, data_type, subtype)
+                mapped_dict = self.map_json_data(
+                    subtype_mapping, data, data_type, subtype
                 )
+                if mapped_dict:
+                    transformed_data.append(mapped_dict)
 
             return transformed_data
-                
 
         else:
             try:
-                delimiter, cef_version, arcsight_mappings = get_arcsight_mappings(
-                    self.mappings, data_type
-                )
+                (
+                    delimiter,
+                    cef_version,
+                    arcsight_mappings,
+                ) = get_arcsight_mappings(self.mappings, data_type)
             except KeyError as err:
                 self.logger.error(
-                    "Error in arcsight mapping file. Error: {}".format(str(err))
+                    f"{self.log_prefix}: Error in arcsight mapping file. Error: {err}"
                 )
                 raise
             except MappingValidationError as err:
-                self.logger.error(str(err))
+                self.logger.error(
+                    f"{self.log_prefix}: An error occurred while validating mappings. Error: {err}"
+                )
                 raise
             except Exception as err:
                 self.logger.error(
-                    "An error occurred while mapping data using given json mappings. Error: {}".format(
-                        str(err)
-                    )
+                    f"{self.log_prefix}: An error occurred while mapping data using given json mappings. Error: {err}"
                 )
                 raise
 
@@ -346,11 +393,11 @@ class ArcSightPlugin(PluginBase):
                 delimiter,
                 cef_version,
                 self.logger,
+                self.log_prefix,
             )
 
             transformed_data = []
             for data in raw_data:
-
                 # First retrieve the mapping of subtype being transformed
                 try:
                     subtype_mapping = self.get_subtype_mapping(
@@ -358,10 +405,8 @@ class ArcSightPlugin(PluginBase):
                     )
                 except Exception:
                     self.logger.error(
-                        'Error occurred while retrieving mappings for subtype "{}". '
-                        "Transformation of current record will be skipped.".format(
-                            subtype
-                        )
+                        f'{self.log_prefix}: Error occurred while retrieving mappings for subtype "{subtype}". '
+                        "Transformation of current record will be skipped."
                     )
                     continue
 
@@ -372,10 +417,8 @@ class ArcSightPlugin(PluginBase):
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: Error occurred while creating CEF header: {}. Transformation of "
-                        "current record will be skipped.".format(
-                            data_type, subtype, str(err)
-                        )
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- Error occurred while creating CEF header: {err}. Transformation of "
+                        "current record will be skipped."
                     )
                     continue
 
@@ -385,37 +428,32 @@ class ArcSightPlugin(PluginBase):
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: Error occurred while creating CEF extension: {}. Transformation of "
-                        "the current record will be skipped".format(
-                            data_type, subtype, str(err)
-                        )
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- Error occurred while creating CEF extension: {err}. Transformation of "
+                        "the current record will be skipped"
                     )
                     continue
 
                 try:
-                    transformed_data.append(
-                        cef_generator.get_cef_event(
-                            data,
-                            header,
-                            extension,
-                            data_type,
-                            subtype,
-                            self.configuration.get(
-                                "log_source_identifier", "netskopece"
-                            ),
-                        )
+                    cef_generated_event = cef_generator.get_cef_event(
+                        data,
+                        header,
+                        extension,
+                        data_type,
+                        subtype,
+                        self.configuration.get(
+                            "log_source_identifier", "netskopece"
+                        ),
                     )
+                    if cef_generated_event:
+                        transformed_data.append(cef_generated_event)
                 except EmptyExtensionError:
                     self.logger.error(
-                        "[{}][{}]: Got empty extension during transformation."
-                        "Transformation of current record will be skipped".format(
-                            data_type, subtype
-                        )
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- Got empty extension during transformation."
+                        "Transformation of current record will be skipped"
                     )
                 except Exception as err:
                     self.logger.error(
-                        "[{}][{}]: An error occurred during transformation."
-                        " Error: {}".format(data_type, subtype, str(err))
+                        f"{self.log_prefix}: [{data_type}][{subtype}]- An error occurred during transformation. Error: {err}"
                     )
             return transformed_data
 
@@ -468,21 +506,22 @@ class ArcSightPlugin(PluginBase):
             syslogger = self.init_handler(self.configuration)
         except Exception as err:
             self.logger.error(
-                "Error occurred during initializing connection. Error: {}".format(
-                    str(err)
-                )
+                f"{self.log_prefix}: Error occurred during initializing connection. Error: {err}"
             )
             raise
 
         # Log the transformed data to given arcsight server
         for data in transformed_data:
             try:
-                syslogger.info(data)
-                syslogger.handlers[0].flush()
+                if data:
+                    syslogger.info(
+                        json.dumps(data) if isinstance(data, dict) else data
+                    )
+                    syslogger.handlers[0].flush()
             except Exception as err:
                 self.logger.error(
-                    "Error occurred during data ingestion."
-                    " Error: {}. Record will be skipped".format(str(err))
+                    f"{self.log_prefix}: Error occurred during data ingestion."
+                    f" Error: {err}. Record will be skipped"
                 )
 
         # Clean up
@@ -492,7 +531,7 @@ class ArcSightPlugin(PluginBase):
             del syslogger
         except Exception as err:
             self.logger.error(
-                "Error occurred during Clean up. Error: {}".format(str(err))
+                f"{self.log_prefix}: Error occurred during Clean up. Error: {err}"
             )
 
     def test_server_connectivity(self, configuration):
@@ -501,7 +540,7 @@ class ArcSightPlugin(PluginBase):
             syslogger = self.init_handler(configuration)
         except Exception as err:
             self.logger.error(
-                "Error occurred while establishing connection with arcsight server. Make sure "
+                f"{self.log_prefix}: Error occurred while establishing connection with arcsight server. Make sure "
                 "you have provided correct arcsight server and port."
             )
             raise err
@@ -514,14 +553,14 @@ class ArcSightPlugin(PluginBase):
 
     def validate(self, configuration: dict) -> ValidationResult:
         """Validate the configuration parameters dict."""
-        arcsight_validator = ArcSightValidator(self.logger)
+        arcsight_validator = ArcSightValidator(self.logger, self.log_prefix)
 
         if (
             "arcsight_server" not in configuration
             or not configuration["arcsight_server"].strip()
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "ArcSight Server IP/FQDN is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -529,7 +568,7 @@ class ArcSightPlugin(PluginBase):
             )
         elif type(configuration["arcsight_server"]) != str:
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid ArcSight server IP/FQDN found in the configuration parameters."
             )
             return ValidationResult(
@@ -540,7 +579,7 @@ class ArcSightPlugin(PluginBase):
             or not configuration["arcsight_format"].strip()
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "ArcSight Format is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -551,7 +590,7 @@ class ArcSightPlugin(PluginBase):
             or configuration["arcsight_format"] not in SYSLOG_FORMATS
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid ArcSight Format found in the configuration parameters."
             )
             return ValidationResult(
@@ -562,7 +601,7 @@ class ArcSightPlugin(PluginBase):
             or not configuration["arcsight_protocol"].strip()
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "ArcSight Protocol is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -573,7 +612,7 @@ class ArcSightPlugin(PluginBase):
             or configuration["arcsight_protocol"] not in SYSLOG_PROTOCOLS
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid ArcSight Protocol found in the configuration parameters."
             )
             return ValidationResult(
@@ -584,15 +623,17 @@ class ArcSightPlugin(PluginBase):
             or not configuration["arcsight_port"]
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "ArcSight Port is a required field in the configuration parameters."
             )
             return ValidationResult(
                 success=False, message="ArcSight Port is a required field."
             )
-        elif not arcsight_validator.validate_arcsight_port(configuration["arcsight_port"]):
+        elif not arcsight_validator.validate_arcsight_port(
+            configuration["arcsight_port"]
+        ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid ArcSight Port found in the configuration parameters."
             )
             return ValidationResult(
@@ -600,11 +641,11 @@ class ArcSightPlugin(PluginBase):
             )
         mappings = self.mappings.get("jsonData", None)
         mappings = json.loads(mappings)
-        if type(mappings) != dict or not arcsight_validator.validate_arcsight_map(
+        if type(
             mappings
-        ):
+        ) != dict or not arcsight_validator.validate_arcsight_map(mappings):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid ArcSight attribute mapping found in the configuration parameters."
             )
             return ValidationResult(
@@ -616,7 +657,7 @@ class ArcSightPlugin(PluginBase):
             or not configuration["arcsight_certificate"].strip()
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "ArcSight Certificate mapping is a required field when TLS is provided in the configuration parameters."
             )
             return ValidationResult(
@@ -628,7 +669,7 @@ class ArcSightPlugin(PluginBase):
             and type(configuration["arcsight_certificate"]) != str
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid ArcSight Certificate mapping found in the configuration parameters."
             )
             return ValidationResult(
@@ -640,7 +681,7 @@ class ArcSightPlugin(PluginBase):
             or not configuration["log_source_identifier"].strip()
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Log Source Identifier is a required field in the configuration parameters."
             )
             return ValidationResult(
@@ -652,7 +693,7 @@ class ArcSightPlugin(PluginBase):
             or " " in configuration["log_source_identifier"].strip()
         ):
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Invalid Log Source Identifier found in the configuration parameters."
             )
             return ValidationResult(
@@ -665,7 +706,7 @@ class ArcSightPlugin(PluginBase):
             self.test_server_connectivity(configuration)
         except Exception:
             self.logger.error(
-                "ArcSight Plugin: Validation error occurred. Error: "
+                f"{self.log_prefix}: Validation error occurred. Error: "
                 "Connection to SIEM platform is not established."
             )
             return ValidationResult(
