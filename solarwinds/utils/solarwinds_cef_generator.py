@@ -168,7 +168,7 @@ class CEFGenerator(object):
         """
         for configured_header in list(headers.keys()):
             if configured_header not in possible_headers:
-                self.logger.error(
+                self.logger.warn(
                     f'{self.log_prefix}: [{data_type}][{subtype}]- Found invalid header configured in SolarWinds mapping file: "{configured_header}". Header '
                     "field will be ignored."
                 )
@@ -204,15 +204,15 @@ class CEFGenerator(object):
             try:
                 value = self.extension_converters[name].converter(value, name)
             except KeyError:
-                self.logger.error(
+                self.logger.warn(
                     f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Could not '
-                    'find the field in the "valid_extensions". Field will be ignored'
+                    'find the field in the "valid_extensions". Field will be ignored.'
                 )
                 continue
             except Exception as err:
-                self.logger.error(
+                self.logger.warn(
                     f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Error: {err}. '
-                    "Field will be ignored"
+                    "Field will be ignored."
                 )
                 continue
 
@@ -228,14 +228,14 @@ class CEFGenerator(object):
                     self.valid_extensions[name].key_name
                 ] = sanitized_value
             except KeyError:
-                self.logger.error(
+                self.logger.warn(
                     f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Could not '
                     'find the field in the "valid_extensions". Field will be ignored'
                 )
             except Exception as err:
-                self.logger.error(
+                self.logger.warn(
                     f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Error: {err}. '
-                    "Field will be ignored"
+                    "Field will be ignored."
                 )
 
         possible_headers = [
@@ -277,7 +277,7 @@ class CEFGenerator(object):
                         self.get_header_value(header, headers)
                     )
                 except Exception as err:
-                    self.logger.error(
+                    self.logger.warn(
                         f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for header field: "{header}". Error: {err}. '
                         "Field will be ignored"
                     )
