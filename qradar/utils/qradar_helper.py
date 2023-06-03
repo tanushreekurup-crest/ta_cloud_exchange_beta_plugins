@@ -39,7 +39,6 @@ from .qradar_exceptions import (
     MappingValidationError,
 )
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
-from .qradar_constants import PLUGIN_NAME
 
 
 def validate_extension(instance):
@@ -54,7 +53,8 @@ def validate_extension(instance):
 
 
 def validate_header_extension_subdict(instance):
-    """Validate sub dict of header and extension having fields "mapping" and "default".
+    """Validate sub dict of header and extension 
+    having fields "mapping" and "default".
 
     Args:
         instance: JSON instance to be validated
@@ -140,7 +140,8 @@ def validate_header(instance):
 
     validate(instance=instance, schema=schema)
 
-    # After validating schema, validate the "mapping" and "default" fields for each header fields
+    # After validating schema, validate the "mapping"
+    # and "default" fields for each header fields
     for field in instance:
         validate_header_extension_subdict(instance[field])
 
@@ -181,11 +182,13 @@ def validate_extension_field(instance):
     validate_header_extension_subdict(instance)
 
 
-def get_qradar_mappings(mappings, data_type, name):
-    """Read mapping json and return the dict of mappings to be applied to raw_data.
+def get_qradar_mappings(mappings, data_type):
+    """Read mapping json and return the dict of
+    mappings to be applied to raw_data.
 
     Args:
-        data_type (str): Data type (alert/event) for which the mappings are to be fetched
+        data_type (str): Data type (alert/event) for which
+        the mappings are to be fetched
         mappings: Attribute mapping json string
 
     Returns:
@@ -207,7 +210,8 @@ def get_qradar_mappings(mappings, data_type, name):
             validate_header(subtype_header)
         except JsonSchemaValidationError as err:
             raise MappingValidationError(
-                f'{PLUGIN_NAME}[{name}]: Error occurred while validating qradar header for type "{subtype}" Error: {err}'
+                "Error occurred while validating qradar header for "
+                'type "{}" Error: {}'.format(subtype, err)
             )
 
     # Validate the extension for each mapped subtype
@@ -217,7 +221,8 @@ def get_qradar_mappings(mappings, data_type, name):
             validate_extension(subtype_extension)
         except JsonSchemaValidationError as err:
             raise MappingValidationError(
-                f'{PLUGIN_NAME}[{name}]: Error occurred while validating qradar extension for type "{subtype}". Error: {err}'
+                "Error occurred while validating qradar extension for "
+                'type "{}". Error: {}'.format(subtype, err)
             )
 
         # Validate each extension
@@ -226,17 +231,22 @@ def get_qradar_mappings(mappings, data_type, name):
                 validate_extension_field(ext_dict)
             except JsonSchemaValidationError as err:
                 raise MappingValidationError(
-                    f'{PLUGIN_NAME}[{name}]: Error occurred while validating qradar extension field "{cef_field}" for type "{subtype}". Error: {err}'
+                    "Error occurred while validating qradar extension "
+                    'field "{}" for type "{}". Error: {}'.format(
+                        cef_field, subtype, err
+                    )
                 )
 
     return mappings["delimiter"], mappings["cef_version"], mappings["taxonomy"]
 
 
 def extract_subtypes(mappings, data_type):
-    """Extract subtypes of given data types. e.g: for data type "alert", possible subtypes are "dlp", "policy" etc.
+    """Extract subtypes of given data types. e.g: for data type "alert",
+    possible subtypes are "dlp", "policy" etc.
 
     Args:
-        data_type (str): Data type (alert/event) for which the mappings are to be fetched
+        data_type (str): Data type (alert/event) for which
+        the mappings are to be fetched
         mappings: Attribute mapping json string
 
     Returns:
