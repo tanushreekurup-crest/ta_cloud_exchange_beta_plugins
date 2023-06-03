@@ -50,10 +50,10 @@ from netskope.integrations.cls.utils.converter import *
 class CEFGenerator(object):
     """CEF Generator class."""
 
-    def __init__(self, mapping, delimiter, cef_version, logger, name):
+    def __init__(self, mapping, delimiter, cef_version, logger, log_prefix):
         """Init method."""
         self.logger = logger
-        self.name = name
+        self.log_prefix = log_prefix
         self.cef_version = cef_version  # Version of CEF being used
         self.mapping = mapping  # Mapping file content
         self.extension = collections.namedtuple(
@@ -104,7 +104,8 @@ class CEFGenerator(object):
             return field_converters
         except Exception as err:
             self.logger.error(
-                f"{PLUGIN_NAME}[{self.name}]: Error occurred while parsing CEF transformation field. Error: {err}"
+                f"{self.log_prefix}: Error occurred while parsing CEF "
+                f" transformation field. Error: {err}"
             )
             raise
 
@@ -138,8 +139,8 @@ class CEFGenerator(object):
             return field_sanitizers
         except Exception as err:
             self.logger.error(
-                f"{PLUGIN_NAME}[{self.name}]: Error occurred while parsing CEF transformation field. \
-                    Error: {err}"
+                f"{self.log_prefix}: Error occurred while parsing CEF "
+                f"transformation field. Error: {err}"
             )
             raise
 
@@ -170,9 +171,11 @@ class CEFGenerator(object):
         """
         for configured_header in list(headers.keys()):
             if configured_header not in possible_headers:
-                self.logger.error(
-                    f'{PLUGIN_NAME}[{self.configuration["name"]}]([{data_type}][{subtype}]): Found invalid header configured in syslog mapping file: "{configured_header}". Header '
-                    "field will be ignored."
+                self.logger.warn(
+                    f'{self.log_prefix}: [{data_type}][{subtype}]- '
+                    'Found invalid header configured in syslog mapping file: '
+                    f'"{configured_header}". Header '
+                    'field will be ignored.'
                 )
 
     def webtx_timestamp(self, raw_data):
@@ -206,15 +209,15 @@ class CEFGenerator(object):
             try:
                 value = self.extension_converters[name].converter(value, name)
             except KeyError:
-                self.logger.error(
-                    f'{PLUGIN_NAME}[{self.configuration["name"]}]([{data_type}][{subtype}]): An error occurred while generating CEF data for field: "{name}". Could not '
-                    'find the field in the "valid_extensions". Field will be ignored'
+                self.logger.warn(
+                    f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Could not '
+                    'find the field in the "valid_extensions". Field will be ignored.'
                 )
                 continue
             except Exception as err:
-                self.logger.error(
-                    f'{PLUGIN_NAME}[{self.configuration["name"]}]([{data_type}][{subtype}]): An error occurred while generating CEF data for field: "{name}". Error: {err}. '
-                    "Field will be ignored"
+                self.logger.warn(
+                    f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Error: {err}. '
+                    "Field will be ignored."
                 )
                 continue
 
@@ -230,14 +233,14 @@ class CEFGenerator(object):
                     self.valid_extensions[name].key_name
                 ] = sanitized_value
             except KeyError:
-                self.logger.error(
-                    f'{PLUGIN_NAME}[{self.configuration["name"]}]([{data_type}][{subtype}]): An error occurred while generating CEF data for field: "{name}". Could not '
-                    'find the field in the "valid_extensions". Field will be ignored'
+                self.logger.warn(
+                    f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Could not '
+                    'find the field in the "valid_extensions". Field will be ignored.'
                 )
             except Exception as err:
-                self.logger.error(
-                    f'{PLUGIN_NAME}[{self.configuration["name"]}]([{data_type}][{subtype}]): An error occurred while generating CEF data for field: "{name}". Error: {err}. '
-                    "Field will be ignored"
+                self.logger.warn(
+                    f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for field: "{name}". Error: {err}. '
+                    "Field will be ignored."
                 )
 
         possible_headers = [
@@ -281,9 +284,9 @@ class CEFGenerator(object):
                     )
 
                 except Exception as err:
-                    self.logger.error(
-                        f'{PLUGIN_NAME}[{self.configuration["name"]}]([{data_type}][{subtype}]): An error occurred while generating CEF data for header field: "{header}". Error: {err}. '
-                        "Field will be ignored"
+                    self.logger.warn(
+                        f'{self.log_prefix}: [{data_type}][{subtype}]- An error occurred while generating CEF data for header field: "{header}". Error: {err}. '
+                        "Field will be ignored."
                     )
 
         if data_type == "webtx":
