@@ -39,6 +39,7 @@ import threading
 import socket
 import json
 import os
+import traceback
 from typing import List
 from jsonpath import jsonpath
 from netskope.common.utils import AlertsHelper
@@ -65,9 +66,11 @@ from .utils.secureworks_exceptions import (
 from .utils.secureworks_cef_generator import (
     CEFGenerator,
 )
-from .utils.secureworks_ssl import SSLSecureworksHandler
+from .utils.secureworks_ssl import SSLSyslogHandler
 
-
+PLATFORM_NAME = "Secureworks"
+MODULE_NAME = "CLS"
+PLUGIN_VERSION = "2.0.0"
 class SecureworksPlugin(PluginBase):
     """The Secureworks plugin implementation class."""
 
@@ -77,14 +80,14 @@ class SecureworksPlugin(PluginBase):
         *args,
         **kwargs,
     ):
-        """Initialize SecureworksPlugin class."""
+        """Initialize SyslogPlugin class."""
         super().__init__(
             name,
             *args,
             **kwargs,
         )
         self.plugin_name, self.plugin_version = self._get_plugin_info()
-        self.log_prefix = f"CLS {self.plugin_name} [{name}]"
+        self.log_prefix = f"{MODULE_NAME} {self.plugin_name} [{name}]"
 
     def _get_plugin_info(self) -> tuple:
         """Get plugin name and version from manifest.
@@ -98,11 +101,18 @@ class SecureworksPlugin(PluginBase):
             )
             with open(file_path, "r") as manifest:
                 manifest_json = json.load(manifest)
-                plugin_name = manifest_json.get("name", "Secureworks")
-                plugin_version = manifest_json.get("version", "2.0.0")
+                plugin_name = manifest_json.get("name", PLATFORM_NAME)
+                plugin_version = manifest_json.get("version", PLUGIN_VERSION)
                 return (plugin_name, plugin_version)
-        except Exception:
-            return ("Secureworks", "2.0.0")
+        except Exception as exp:
+            self.logger.info(
+                message=(
+                    f"{MODULE_NAME} {PLATFORM_NAME}: Error occurred while"
+                    " getting plugin details. Error: {}".format(exp)
+                ),
+                details=traceback.format_exc(),
+            )
+        return (PLATFORM_NAME, PLUGIN_VERSION)
 
     def get_mapping_value_from_json_path(self, data, json_path):
         """To Fetch the value from given JSON object using given JSON path.
@@ -127,9 +137,9 @@ class SecureworksPlugin(PluginBase):
             fetched value.
         """
         return (
-            data[field]
+            (data[field], True)
             if data[field] or isinstance(data[field], int)
-            else "null"
+            else ("null", False)
         )
 
     def get_subtype_mapping(self, mappings, subtype):
@@ -168,12 +178,16 @@ class SecureworksPlugin(PluginBase):
             mapping_variables = {"$tenant_name": tenant.name}
 
         missing_fields = []
+        mapped_field_flag = False
         # Iterate over mapped headers
         for cef_header, header_mapping in header_mappings.items():
             try:
-                headers[cef_header] = self.get_field_value_from_data(
+                headers[cef_header], mapped_field = self.get_field_value_from_data(
                     header_mapping, data, data_type, subtype, False
                 )
+                
+                if mapped_field:
+                    mapped_field_flag = mapped_field
 
                 # Handle variable mappings
                 if (
@@ -186,7 +200,7 @@ class SecureworksPlugin(PluginBase):
             except FieldNotFoundError as err:
                 missing_fields.append(str(err))
 
-        return headers
+        return headers, mapped_field_flag
 
     def get_extensions(self, extension_mappings, data, data_type, subtype):
         """Fetch extensions from given mappings.
@@ -202,21 +216,24 @@ class SecureworksPlugin(PluginBase):
         """
         extension = {}
         missing_fields = []
+        mapped_field_flag = False
 
         # Iterate over mapped extensions
         for cef_extension, extension_mapping in extension_mappings.items():
             try:
-                extension[cef_extension] = self.get_field_value_from_data(
+                extension[cef_extension], mapped_field = self.get_field_value_from_data(
                     extension_mapping,
                     data,
                     data_type,
                     subtype,
                     is_json_path="is_json_path" in extension_mapping,
                 )
+                if mapped_field:
+                    mapped_field_flag = mapped_field
             except FieldNotFoundError as err:
                 missing_fields.append(str(err))
 
-        return extension
+        return extension, mapped_field_flag
 
     def get_field_value_from_data(
         self, extension_mapping, data, data_type, subtype, is_json_path=False
@@ -248,6 +265,9 @@ class SecureworksPlugin(PluginBase):
            NP    |     NP     |        NP      |           - (Not possible)
         -----------------------------------------------------------------------
         """
+        # mapped_field will be returned as true only if the value returned is\
+        # using the mapping_field and not default_value
+        mapped_field = False
         if (
             "mapping_field" in extension_mapping
             and extension_mapping["mapping_field"]
@@ -259,7 +279,8 @@ class SecureworksPlugin(PluginBase):
                     data, extension_mapping["mapping_field"]
                 )
                 if value:
-                    return ",".join([str(val) for val in value])
+                    mapped_field = True
+                    return ",".join([str(val) for val in value]), mapped_field
                 else:
                     raise FieldNotFoundError(
                         extension_mapping["mapping_field"]
@@ -274,9 +295,10 @@ class SecureworksPlugin(PluginBase):
                         and data[extension_mapping["mapping_field"]]
                     ):
                         try:
+                            mapped_field = True
                             return int(
                                 data[extension_mapping["mapping_field"]]
-                            )
+                            ), mapped_field
                         except Exception:
                             pass
                     return self.get_mapping_value_from_field(
@@ -284,14 +306,14 @@ class SecureworksPlugin(PluginBase):
                     )
                 elif "default_value" in extension_mapping:
                     # If mapped value is not found in response and default is mapped, map the default value (case #2)
-                    return extension_mapping["default_value"]
+                    return extension_mapping["default_value"], mapped_field
                 else:  # case #6
                     raise FieldNotFoundError(
                         extension_mapping["mapping_field"]
                     )
         else:
             # If mapping is not present, 'default_value' must be there because of validation (case #3 and case #5)
-            return extension_mapping["default_value"]
+            return extension_mapping["default_value"], mapped_field
 
     def map_json_data(self, mappings, data, data_type, subtype):
         """Filter the raw data and returns the filtered data.
@@ -302,7 +324,7 @@ class SecureworksPlugin(PluginBase):
         :return: Mapped data based on fields given in mapping file
         """
 
-        if mappings == []:
+        if mappings == [] or not data:
             return data
 
         mapped_dict = {}
@@ -392,24 +414,27 @@ class SecureworksPlugin(PluginBase):
                 self.logger,
                 self.log_prefix,
             )
+            
+            # First retrieve the mapping of subtype being transformed
+            try:
+                subtype_mapping = self.get_subtype_mapping(
+                    secureworks_mappings[data_type], subtype
+                )
+            except Exception:
+                self.logger.error(
+                    f'{self.log_prefix}: Error occurred while retrieving mappings for subtype "{subtype}". '
+                    "Transformation of current batch will be skipped."
+                )
+                return []
 
             transformed_data = []
             for data in raw_data:
-                # First retrieve the mapping of subtype being transformed
-                try:
-                    subtype_mapping = self.get_subtype_mapping(
-                        secureworks_mappings[data_type], subtype
-                    )
-                except Exception:
-                    self.logger.error(
-                        f'{self.log_prefix}: Error occurred while retrieving mappings for subtype "{subtype}". '
-                        "Transformation of current record will be skipped."
-                    )
+                if not data:
                     continue
 
                 # Generating the CEF header
                 try:
-                    header = self.get_headers(
+                    header, mapped_flag_header = self.get_headers(
                         subtype_mapping["header"], data, data_type, subtype
                     )
                 except Exception as err:
@@ -420,17 +445,19 @@ class SecureworksPlugin(PluginBase):
                     continue
 
                 try:
-                    extension = self.get_extensions(
+                    extension, mapped_flag_extension = self.get_extensions(
                         subtype_mapping["extension"], data, data_type, subtype
                     )
                 except Exception as err:
                     self.logger.error(
                         f"{self.log_prefix}: [{data_type}][{subtype}]- Error occurred while creating CEF extension: {err}. Transformation of "
-                        "the current record will be skipped"
+                        "the current record will be skipped."
                     )
                     continue
 
                 try:
+                    if not (mapped_flag_header or mapped_flag_extension):
+                        continue
                     cef_generated_event = cef_generator.get_cef_event(
                         data,
                         header,
@@ -446,7 +473,7 @@ class SecureworksPlugin(PluginBase):
                 except EmptyExtensionError:
                     self.logger.error(
                         f"{self.log_prefix}: [{data_type}][{subtype}]- Got empty extension during transformation."
-                        "Transformation of current record will be skipped"
+                        "Transformation of current record will be skipped."
                     )
                 except Exception as err:
                     self.logger.error(
@@ -465,7 +492,9 @@ class SecureworksPlugin(PluginBase):
         syslogger.propagate = False
 
         if configuration["secureworks_protocol"] == "TLS":
-            tls_handler = SSLSecureworksHandler(
+            tls_handler = SSLSyslogHandler(
+                configuration.get("transformData", True),
+                configuration["secureworks_protocol"],
                 address=(
                     configuration["secureworks_server"],
                     configuration["secureworks_port"],
@@ -479,7 +508,9 @@ class SecureworksPlugin(PluginBase):
                 socktype = socket.SOCK_STREAM
 
             # Create a syslog handler with given configuration parameters
-            handler = logging.handlers.SysLogHandler(
+            handler = SSLSyslogHandler(
+                configuration.get("transformData", True),
+                configuration["secureworks_protocol"],
                 address=(
                     configuration["secureworks_server"],
                     configuration["secureworks_port"],
@@ -518,7 +549,7 @@ class SecureworksPlugin(PluginBase):
                     syslogger.handlers[0].flush()
             except Exception as err:
                 self.logger.error(
-                    f"{self.log_prefix}: Error occurred during data ingestion. Error: {err}. Record will be skipped"
+                    f"{self.log_prefix}: Error occurred during data ingestion. Error: {err}. Record will be skipped."
                 )
 
         # Clean up
