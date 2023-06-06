@@ -43,11 +43,11 @@ from .syslog_constants import PLUGIN_NAME
 class SyslogValidator(object):
     """Syslog validator class."""
 
-    def __init__(self, logger, name):
+    def __init__(self, logger, log_prefix):
         """Initialize."""
         super().__init__()
         self.logger = logger
-        self.name = name
+        self.log_prefix = log_prefix
 
     def validate_syslog_port(self, syslog_port):
         """Validate syslog port.
@@ -145,7 +145,7 @@ class SyslogValidator(object):
             validate(instance=mappings, schema=schema)
         except JsonSchemaValidationError as err:
             self.logger.error(
-                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: validating JSON schema: {err}"
+                f"{self.log_prefix}: Validation error occurred. Error: validating JSON schema: {err}"
             )
             return False
 
@@ -159,7 +159,7 @@ class SyslogValidator(object):
                         self.validate_taxonomy(subtype_taxonomy)
                     except JsonSchemaValidationError as err:
                         self.logger.error(
-                            f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: "
+                            f"{self.log_prefix}: Validation error occurred. Error: "
                             f'while validating JSON schema for type "{data_type}" and subtype "{subtype}": {err}'
                         )
                         return False
@@ -182,7 +182,7 @@ class SyslogValidator(object):
 
         except Exception as err:
             self.logger.error(
-                f"{PLUGIN_NAME}[{self.name}]: Validation error occurred. Error: {err}"
+                f"{self.log_prefix}: Validation error occurred. Error: {err}"
             )
 
         return False
