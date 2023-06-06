@@ -55,7 +55,8 @@ class Rapid7Validator(object):
             rapid7_port: the rapid7 port to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         if rapid7_port or rapid7_port == 0:
             try:
@@ -144,7 +145,10 @@ class Rapid7Validator(object):
             validate(instance=mappings, schema=schema)
         except JsonSchemaValidationError as err:
             self.logger.error(
-                f"{self.log_prefix}: Validation error occurred. Error: validating JSON schema: {err}"
+                "{}: Validation error occurred. "
+                "Error: validating JSON schema: {}".format(
+                    self.log_prefix, err
+                )
             )
             return False
 
@@ -158,7 +162,11 @@ class Rapid7Validator(object):
                         self.validate_taxonomy(subtype_taxonomy)
                     except JsonSchemaValidationError as err:
                         self.logger.error(
-                            f'{self.log_prefix}: Validation error occurred. Error: while validating JSON schema for type "{data_type}" and subtype "{subtype}": "{err}"'
+                            "{}: Validation error occurred. "
+                            "Error: while validating JSON schema for "
+                            'type "{}" and subtype "{}": "{}"'.format(
+                                self.log_prefix, data_type, subtype, err
+                            )
                         )
                         return False
         return True
@@ -170,7 +178,8 @@ class Rapid7Validator(object):
             mappings: the JSON string to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         if mappings is None:
             return False
@@ -179,7 +188,9 @@ class Rapid7Validator(object):
                 return True
         except Exception as err:
             self.logger.error(
-                f"{self.log_prefix}: Validation error occurred. Error: {err}"
+                "{}: Validation error occurred. Error: {}".format(
+                    self.log_prefix, err
+                )
             )
 
         return False
@@ -191,7 +202,8 @@ class Rapid7Validator(object):
             valid_extensions: the CSV string to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         try:
             csviter = csv.DictReader(
