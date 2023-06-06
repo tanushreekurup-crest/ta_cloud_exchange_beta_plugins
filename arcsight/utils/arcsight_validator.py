@@ -55,7 +55,8 @@ class ArcSightValidator(object):
             arcsight_port: the arcsight port to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         if arcsight_port or arcsight_port == 0:
             try:
@@ -144,7 +145,10 @@ class ArcSightValidator(object):
             validate(instance=mappings, schema=schema)
         except JsonSchemaValidationError as err:
             self.logger.error(
-                f"{self.log_prefix}: Validation error occurred. Error: validating JSON schema: {err}"
+                "{}: Validation error occurred. "
+                "Error: validating JSON schema: {}".format(
+                    self.log_prefix, err
+                )
             )
             return False
 
@@ -158,8 +162,11 @@ class ArcSightValidator(object):
                         self.validate_taxonomy(subtype_taxonomy)
                     except JsonSchemaValidationError as err:
                         self.logger.error(
-                            f"{self.log_prefix}: Validation error occurred. Error: "
-                            f'while validating JSON schema for type "{data_type}" and subtype "{subtype}": {err}'
+                            "{}: Validation error occurred. Error: "
+                            'while validating JSON schema for type "{}" and '
+                            'subtype "{}": {}'.format(
+                                self.log_prefix, data_type, subtype, err
+                            )
                         )
                         return False
         return True
@@ -171,7 +178,8 @@ class ArcSightValidator(object):
             mappings: the JSON string to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         if mappings is None:
             return False
@@ -192,7 +200,8 @@ class ArcSightValidator(object):
             valid_extensions: the CSV string to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         try:
             csviter = csv.DictReader(
