@@ -55,7 +55,8 @@ class AlienVaultValidator(object):
             alienvault_port: the AlienVault port to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         if alienvault_port or alienvault_port == 0:
             try:
@@ -159,8 +160,11 @@ class AlienVaultValidator(object):
                         self.validate_taxonomy(subtype_taxonomy)
                     except JsonSchemaValidationError as err:
                         self.logger.error(
-                            f"{self.log_prefix}: Validation error occurred. Error: "
-                            f'while validating JSON schema for type "{data_type}" and subtype "{subtype}": {err}'
+                            "{}: Validation error occurred. Error: while "
+                            'validating JSON schema for type "{}" '
+                            'and subtype "{}": {}'.format(
+                                self.log_prefix, data_type, subtype, err
+                            )
                         )
                         return False
         return True
@@ -172,7 +176,8 @@ class AlienVaultValidator(object):
             mappings: the JSON string to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         if mappings is None:
             return False
@@ -193,7 +198,8 @@ class AlienVaultValidator(object):
             valid_extensions: the CSV string to be validated
 
         Returns:
-            Whether the provided value is valid or not. True in case of valid value, False otherwise
+            Whether the provided value is valid or not.
+            True in case of valid value, False otherwise
         """
         try:
             csviter = csv.DictReader(
