@@ -19,7 +19,7 @@ from ..exceptions import AccessError, ValidationError
 log = logging.getLogger(__name__)
 
 
-def as_pages(func, per_request=0, *args, **kwargs):
+def as_pages(func, next=0, per_request=0, *args, **kwargs):
     """Creates a generator for TAXII 2.1 endpoints that support pagination.
 
     Args:
@@ -29,7 +29,10 @@ def as_pages(func, per_request=0, *args, **kwargs):
 
     Use args or kwargs to pass filter information or other arguments required to make the call.
     """
-    envelope = func(limit=per_request, *args, **kwargs)
+    if next:
+        envelope = func(limit=per_request, next=next, *args, **kwargs)
+    else:
+        envelope = func(limit=per_request, *args, **kwargs)
     yield envelope
 
     total_obtained = _grab_total_items_from_resource(envelope)
