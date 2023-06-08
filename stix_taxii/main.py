@@ -350,7 +350,7 @@ class STIXTAXIIPlugin(PluginBase):
         delay_config = configuration.get("delay", 0) or 0
         delay_time = int(delay_config)
         
-        start_time = start_time - timedelta(minutes=delay_time)
+        start_time = pytz.utc.localize(start_time - timedelta(minutes=delay_time))
             
         for collection in filtered_collections:
             self.logger.info(
