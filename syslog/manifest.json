@@ -1,7 +1,7 @@
 {
     "name": "Syslog",
     "id": "syslog",
-    "version": "3.0.0-beta",
+    "version": "3.1.0-beta",
     "mapping": "Syslog Default Mappings Beta",
     "types": [
         "alerts",
