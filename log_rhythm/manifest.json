@@ -1,7 +1,7 @@
 {
     "name": "LogRhythm",
     "id": "log_rhythm",
-    "version": "3.0.0-beta",
+    "version": "3.1.0-beta",
     "mapping": "LogRhythm Default Mappings Beta",
     "types": [
         "alerts",
