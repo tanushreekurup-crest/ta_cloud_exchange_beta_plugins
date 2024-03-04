@@ -1,0 +1,153 @@
+{
+  "name": "BMC Helix ITSM",
+  "description": "This plugin is used to create incidents on the BMC Helix ITSM platform.",
+  "version": "1.0.0-beta",
+  "pulling_supported": false,
+  "receiving_supported": true,
+  "configuration": [
+    {
+      "label": "Authentication",
+      "name": "auth",
+      "type": "step",
+      "fields": [
+        {
+          "label": "Server Name",
+          "key": "servername",
+          "type": "text",
+          "default": "",
+          "mandatory": true,
+          "description": "Server Name where the BMC Helix ITSM instance is running."
+        },
+        {
+          "label": "Port",
+          "key": "port",
+          "type": "number",
+          "default": "",
+          "mandatory": true,
+          "description": "Port where the BMC Helix ITSM instance is running."
+        },
+        {
+          "label": "Username",
+          "key": "username",
+          "type": "text",
+          "default": "",
+          "mandatory": true,
+          "description": "The Username associated with the BMC Helix ITSM account."
+        },
+        {
+          "label": "Password",
+          "key": "password",
+          "type": "password",
+          "default": "",
+          "mandatory": true,
+          "description": "The Password associated with the BMC Helix ITSM account."
+        }
+      ]
+    },
+    {
+      "label": "Configuration Parameters",
+      "name": "params",
+      "type": "step",
+      "fields": [
+        {
+          "label": "First Name",
+          "key": "first_name",
+          "type": "text",
+          "default": "",
+          "mandatory": true,
+          "description": "Provide a Customer First Name that will be used while creating incidents on the BMC Helix ITSM platform. Used only while creating the incidents(using queues)."
+        },
+        {
+          "label": "Last Name",
+          "key": "last_name",
+          "type": "text",
+          "default": "",
+          "mandatory": true,
+          "description": "Provide a Customer Last Name that will be used while creating incidents on the BMC Helix ITSM platform. Used only while creating the incidents(using queues)."
+        },
+        {
+          "label": "Incident Type",
+          "key": "incident_type",
+          "type": "choice",
+          "choices": [
+            {
+              "key": "User Service Restoration",
+              "value": "user_service_restoration"
+            },
+            {
+              "key": "User Service Request",
+              "value": "user_service_request"
+            },
+            {
+              "key": "Infrastructure Restoration",
+              "value": "infrastructure_restoration"
+            },
+            {
+              "key": "Infrastructure Event",
+              "value": "infrastructure_event"
+            },
+            {
+              "key": "Security Incident",
+              "value": "security_incident"
+            }
+          ],
+          "default": "user_service_restoration",
+          "mandatory": true,
+          "description": "Incident will be created based on the selected type. Used only while creating the incidents(using queues)."
+        },
+        {
+          "label": "Urgency",
+          "key": "urgency",
+          "type": "choice",
+          "choices": [
+            {
+              "key": "1-Critical",
+              "value": "critical"
+            },
+            {
+              "key": "2-High",
+              "value": "high"
+            },
+            {
+              "key": "3-Medium",
+              "value": "medium"
+            },
+            {
+              "key": "4-Low",
+              "value": "low"
+            }
+          ],
+          "default": "low",
+          "mandatory": true,
+          "description": "Incident will be created based on the selected urgency. Used only while creating the incidents(using queues)."
+        },
+        {
+          "label": "Impact",
+          "key": "impact",
+          "type": "choice",
+          "choices": [
+            {
+              "key": "1-Extensive/Widespread",
+              "value": "extensive"
+            },
+            {
+              "key": "2-Significant/Large",
+              "value": "significant"
+            },
+            {
+              "key": "3-Moderate/Limited",
+              "value": "moderate"
+            },
+            {
+              "key": "4-Minor/Localized",
+              "value": "minor"
+            }
+          ],
+          "default": "minor",
+          "mandatory": true,
+          "description": "Incident will be created based on the selected impact. Used only while creating the incidents(using queues)."
+        }
+      ]
+    }
+  ]
+}
