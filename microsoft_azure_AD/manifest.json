@@ -1,11 +1,11 @@
 {
     "name": "Microsoft Azure AD",
-    "description": "Fetches users and their respective scores from Microsoft Azure AD platform and also performs actions on them. \n\n URE score calculation => RiskLevel None: N/A, RiskLevel hidden: N/A, RiskLevel unknownFutureValue: N/A, RiskLevel low: 875, RiskLevel medium: 625, RiskLevel high: 375.",
+    "description": "This plugin fetches Risky users and their respective scores from Microsoft Azure AD. It also supports Add to group, Remove from group and Confirm compromised actions on users.\n\nURE score calculation => RiskLevel None: N/A, RiskLevel hidden: N/A, RiskLevel unknownFutureValue: N/A, RiskLevel low: 875, RiskLevel medium: 625, RiskLevel high: 375.",
     "id": "microsoft_azure_AD",
     "type": [
         "user"
     ],
-    "version": "1.2.0-beta",
+    "version": "1.2.1-beta",
     "configuration": [
         {
             "label": "Client (Application) ID",
