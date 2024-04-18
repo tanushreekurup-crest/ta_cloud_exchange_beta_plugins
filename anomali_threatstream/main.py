@@ -284,6 +284,36 @@ class AnomaliThreatstreamPlugin(PluginBase):
                 " Allowed values are 'Yes' or 'No'.",
             )
 
+        tags = configuration.get("tags", "").strip()
+        if tags and not isinstance(tags, str):
+            err_msg = "Invalid Tags provided in configuration parameters."
+            self.logger.error(f"{validation_err_msg} {err_msg}")
+            return ValidationResult(
+                success=False,
+                message=err_msg,
+            )
+
+        feed_id = configuration.get("feed_id", "").strip()
+        if feed_id and not isinstance(feed_id, str):
+            err_msg = "Invalid Feed ID provided in configuration parameters."
+            self.logger.error(f"{validation_err_msg} {err_msg}")
+            return ValidationResult(
+                success=False,
+                message=err_msg,
+            )
+        elif (
+            feed_id
+            and not self.anomali_threatstream_helper.validate_comma_separated_values(
+                feed_id
+            )
+        ):
+            err_msg = "Invalid Feed ID provided. Feed ID should be a numeric comma separated values or single value."
+            self.logger.error(f"{validation_err_msg} {err_msg}")
+            return ValidationResult(
+                success=False,
+                message=err_msg,
+            )
+
         is_pull_required = configuration.get("is_pull_required")
         if not is_pull_required:
             err_msg = "Enable Polling is a required configuration parameter."
@@ -509,22 +539,35 @@ class AnomaliThreatstreamPlugin(PluginBase):
         Returns:
             Indicators: PullResult object with list of observables.
         """
-
         try:
             if self.configuration.get("is_pull_required") == "Yes":
                 self.logger.info(
                     f"{self.log_prefix}: Pulling indicators from {PLATFORM_NAME}."
                 )
                 headers = self.get_headers(self.configuration)
-                return self.get_indicators(headers)
+                if hasattr(self, "sub_checkpoint"):
+
+                    def wrapper(self):
+                        yield from self.get_indicators(headers)
+
+                    return wrapper(self)
+
+                else:
+                    indicators = []
+                    for batch in self.get_indicators(headers):
+                        indicators.extend(batch)
+
+                    self.logger.info(
+                        f"{self.log_prefix}: Total {len(indicators)} indicator(s) fetched."
+                    )
+                    return indicators
             else:
                 self.logger.info(
                     f"{self.log_prefix}: Polling is disabled in configuration "
                     "parameter hence skipping pulling of indicators from "
                     f"{PLATFORM_NAME}."
                 )
-            return []
-
+                return []
         except AnomaliThreatstreamPluginException as err:
             self.logger.error(
                 message=(
@@ -559,290 +602,244 @@ class AnomaliThreatstreamPlugin(PluginBase):
             Exception: If an unexpected error occurs while executing the pull cycle.
         """
 
-        indicator_list = []
-        total_skipped_tags = set()
-        skipped_count = 0
-        page_count = 0
         base_url = self.configuration.get("base_url").strip().strip("/")
         query_endpoint = f"{base_url}/api/v2/intelligence"
+
+        storage = self.storage if self.storage is not None else {}
+
+        last_updated = storage.get("last_updated", "")
+        self.logger.debug(f"{self.log_prefix}: Pulling indicators. Storage: {storage}.")
+
+        start_time = None
+        sub_checkpoint = getattr(self, "sub_checkpoint", None)
+        if sub_checkpoint and sub_checkpoint.get("checkpoint"):
+            start_time = sub_checkpoint.get("checkpoint")
+        elif not self.last_run_at:
+            start_time = datetime.now() - timedelta(days=self.configuration.get("days"))
+            start_time = start_time.strftime(DATE_FORMAT_FOR_IOCS)
+        elif last_updated:
+            start_time = last_updated
+        else:
+            start_time = self.last_run_at
+            start_time = start_time.strftime(DATE_FORMAT_FOR_IOCS)
+
+        query_params = {
+            "modified_ts__gte": start_time,
+            "update_id__gt": 0,
+            "limit": MAX_PAGE_SIZE,
+            "order_by": "update_id",
+        }
+        if (
+            self.configuration.get("remote_observables")
+            and self.configuration.get("remote_observables") == "Yes"
+        ):
+            query_params["remote_api"] = "true"
+        confidence = self.configuration.get("confidence")
+        status = self.configuration.get("status")
+        severity = self.configuration.get("severity")
+        indicator_types = self.configuration.get("indicator_type")
+        i_types = [
+            "hash" if indicator_type in ["md5", "sha256"] else indicator_type
+            for indicator_type in indicator_types
+        ]
+        query_params["type"] = ",".join(i_types)
+
+        if all(x in indicator_types for x in ("md5", "sha256")):
+            query_params["hash$subtype"] = "MD5,SHA256"
+        elif "md5" in indicator_types:
+            query_params["hash$subtype"] = "MD5"
+        elif "sha256" in indicator_types:
+            query_params["hash$subtype"] = "SHA256"
+
+        if confidence:
+            query_params["confidence_gte"] = confidence
+        if status:
+            query_params["status"] = ",".join(status)
+        if severity:
+            query_params["severity"] = ",".join(severity)
+        if self.configuration.get("tags"):
+            query_params["tags"] = self.configuration.get("tags")
+        if self.configuration.get("feed_id"):
+            query_params["feed_id"] = self.configuration.get("feed_id")
+
+        last_indicator = None
+        next_page = True
+        parsed_indicators = []
+        page_count = 0
         try:
-            storage = self.storage if self.storage is not None else {}
+            while next_page:
+                total_skipped_tags = set()
+                page_count += 1
+                indicator_type_count = {
+                    "ip": 0,
+                    "ipv6": 0,
+                    "url": 0,
+                    "domain": 0,
+                    "md5": 0,
+                    "sha256": 0,
+                }
+                current_page_skip_count = 0
+                current_extracted_indicators = []
 
-            last_updated = storage.get("last_updated", "")
-            self.logger.debug(
-                f"{self.log_prefix}: Pulling indicators. Storage: {storage}."
-            )
-
-            start_time = None
-            if not self.last_run_at:
-                start_time = datetime.now() - timedelta(
-                    days=self.configuration.get("days")
+                resp_json = self.anomali_threatstream_helper.api_helper(
+                    logger_msg=f"pulling data for page {page_count}",
+                    url=query_endpoint,
+                    method="GET",
+                    headers=headers,
+                    params=query_params,
                 )
-                start_time = start_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-            elif last_updated:
-                start_time = last_updated
-            else:
-                start_time = self.last_run_at
-                start_time = start_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                indicators_json_list = resp_json.get("objects", [])
+                if not indicators_json_list:
+                    break
+                last_indicator = indicators_json_list[-1]
 
-            query_params = {
-                "modified_ts__gte": start_time,
-                "update_id__gt": 0,
-                "limit": MAX_PAGE_SIZE,
-                "order_by": "update_id",
-            }
-            if (
-                self.configuration.get("remote_observables")
-                and self.configuration.get("remote_observables") == "Yes"
-            ):
-                query_params["remote_api"] = "true"
-            confidence = self.configuration.get("confidence")
-            status = self.configuration.get("status")
-            severity = self.configuration.get("severity")
-            indicator_types = self.configuration.get("indicator_type")
-            i_types = [
-                "hash" if indicator_type in [
-                    "md5", "sha256"] else indicator_type
-                for indicator_type in indicator_types
-            ]
-            query_params["type"] = ",".join(i_types)
+                for indicator in indicators_json_list:
+                    try:
+                        skip_indicator = False
+                        tags_data = (
+                            indicator.get("tags", []) if indicator.get("tags") else []
+                        )
+                        if tags_data:
+                            for tag in tags_data:
+                                if tag.get("name", "") == "netskope-ce":
+                                    skip_indicator = True
+                                    break
+                        if not skip_indicator:
+                            if self.configuration["enable_tagging"] == "No":
+                                tags_data = []
 
-            if all(x in indicator_types for x in ("md5", "sha256")):
-                query_params["hash$subtype"] = "MD5,SHA256"
-            elif "md5" in indicator_types:
-                query_params["hash$subtype"] = "MD5"
-            elif "sha256" in indicator_types:
-                query_params["hash$subtype"] = "SHA256"
+                            if indicator.get("value") and indicator.get("type"):
+                                tags, skipped_tags = self.create_tags(tags_data)
+                                total_skipped_tags.update(skipped_tags)
 
-            if confidence:
-                query_params["confidence_gte"] = confidence
-            if status:
-                query_params["status"] = ",".join(status)
-            if severity:
-                query_params["severity"] = ",".join(severity)
-
-            indicator_type_count = {
-                "ip": 0,
-                "ipv6": 0,
-                "url": 0,
-                "domain": 0,
-                "md5": 0,
-                "sha256": 0,
-            }
-
-            last_indicator = None
-            while True:
-                try:
-                    page_count += 1
-                    current_page_skip_count = 0
-                    current_extracted_indicators = []
-
-                    resp_json = self.anomali_threatstream_helper.api_helper(
-                        logger_msg=f"pulling data for page {page_count}",
-                        url=query_endpoint,
-                        method="GET",
-                        headers=headers,
-                        params=query_params,
-                    )
-                    indicators_json_list = resp_json.get("objects", [])
-                    if not indicators_json_list:
-                        break
-                    last_indicator = indicators_json_list[-1]
-
-                    for indicator in indicators_json_list:
-                        try:
-                            skip_indicator = False
-                            tags_data = (
-                                indicator.get("tags", [])
-                                if indicator.get("tags")
-                                else []
-                            )
-                            if tags_data:
-                                for tag in tags_data:
-                                    if tag.get("name", "") == "netskope-ce":
-                                        skip_indicator = True
-                                        break
-                            if not skip_indicator:
-                                if self.configuration["enable_tagging"] == "No":
-                                    tags_data = []
-
-                                if indicator.get("value") and indicator.get("type"):
-                                    tags, skipped_tags = self.create_tags(
-                                        tags_data)
-                                    total_skipped_tags.update(skipped_tags)
-
-                                    description = indicator.get("description")
-                                    indicator_type = indicator.get("type")
-                                    if (
-                                        indicator_type == IndicatorType.MD5
-                                        and indicator.get("subtype") == "SHA256"
-                                    ):
-                                        indicator_type = IndicatorType.SHA256
-                                    current_extracted_indicators.append(
-                                        Indicator(
-                                            value=indicator.get(
-                                                "value").lower(),
-                                            type=ANOMALI_TO_INTERNAL_TYPE.get(
-                                                indicator_type
+                                description = indicator.get("description")
+                                indicator_type = indicator.get("type")
+                                if (
+                                    indicator_type == IndicatorType.MD5
+                                    and indicator.get("subtype") == "SHA256"
+                                ):
+                                    indicator_type = IndicatorType.SHA256
+                                current_extracted_indicators.append(
+                                    Indicator(
+                                        value=indicator.get("value").lower(),
+                                        type=ANOMALI_TO_INTERNAL_TYPE.get(
+                                            indicator_type
+                                        ),
+                                        firstSeen=self.convert_into_date_time(
+                                            indicator.get("created_ts")
+                                        ),
+                                        lastSeen=self.convert_into_date_time(
+                                            indicator.get("modified_ts")
+                                        ),
+                                        severity=SEVERITY_MAPPING.get(
+                                            indicator.get("meta", {}).get(
+                                                "severity", SeverityType.UNKNOWN
                                             ),
-                                            firstSeen=self.convert_into_date_time(
-                                                indicator.get("created_ts")
-                                            ),
-                                            lastSeen=self.convert_into_date_time(
-                                                indicator.get("modified_ts")
-                                            ),
-                                            severity=SEVERITY_MAPPING.get(
-                                                indicator.get("meta", {}).get(
-                                                    "severity", SeverityType.UNKNOWN
-                                                ),
-                                            ),
-                                            tags=tags,
-                                            reputation=self.get_reputation(
-                                                indicator.get("confidence", "")
-                                            ),
-                                            comments=description
+                                        ),
+                                        tags=tags,
+                                        reputation=self.get_reputation(
+                                            indicator.get("confidence", "")
+                                        ),
+                                        comments=(
+                                            description
                                             if description is not None
-                                            else "",
-                                        )
+                                            else ""
+                                        ),
                                     )
+                                )
 
-                                    indicator_type_count[indicator_type] += 1
+                                indicator_type_count[indicator_type] += 1
 
-                                else:
-                                    current_page_skip_count += 1
                             else:
                                 current_page_skip_count += 1
-                        except (ValidationError, Exception) as error:
+                        else:
                             current_page_skip_count += 1
-                            error_message = (
-                                "Validation error occurred"
-                                if isinstance(error, ValidationError)
-                                else "Unexpected error occurred"
-                            )
-                            self.logger.error(
-                                message=(
-                                    f"{self.log_prefix}: {error_message} while"
-                                    " creating indicator. This record "
-                                    f"will be skipped. Error: {error}."
-                                ),
-                                details=str(traceback.format_exc()),
-                            )
+                    except (ValidationError, Exception) as error:
+                        current_page_skip_count += 1
+                        error_message = (
+                            "Validation error occurred"
+                            if isinstance(error, ValidationError)
+                            else "Unexpected error occurred"
+                        )
+                        self.logger.error(
+                            message=(
+                                f"{self.log_prefix}: {error_message} while"
+                                " creating indicator. This record "
+                                f"will be skipped. Error: {error}."
+                            ),
+                            details=str(traceback.format_exc()),
+                        )
 
-                    skipped_count += current_page_skip_count
-                    indicator_list.extend(current_extracted_indicators)
+                parsed_indicators.extend(current_extracted_indicators)
+
+                self.logger.info(
+                    f"{self.log_prefix}: Successfully fetched "
+                    f"{len(current_extracted_indicators)} indicator(s) and skipped {current_page_skip_count}"
+                    f" for page {page_count}. Pull Stat: {indicator_type_count['sha256']} SHA256, "
+                    f"{indicator_type_count['md5']} MD5, {indicator_type_count['url']} URL, "
+                    f"{indicator_type_count['domain']} Domain, {indicator_type_count['ip']} IP, "
+                    f"and {indicator_type_count['ipv6']} IPv6 indicator(s) fetched. "
+                    f"Total indicator(s) fetched - {len(parsed_indicators)}."
+                )
+
+                if len(total_skipped_tags) > 0:
                     self.logger.info(
-                        f"{self.log_prefix}: Successfully fetched "
-                        f"{len(current_extracted_indicators)} indicator(s) "
-                        f"for page {page_count}. Total indicator(s) "
-                        f"fetched - {len(indicator_list)}."
+                        f"{self.log_prefix}: {len(total_skipped_tags)} tag(s) "
+                        "skipped as they were longer than expected size or due"
+                        " to some other exceptions that occurred while "
+                        "creation of them. tags: "
+                        f"({', '.join(total_skipped_tags)})."
                     )
 
-                    if len(indicators_json_list) < MAX_PAGE_SIZE:
-                        storage.clear()
-                        break
-                    else:
-                        query_params["update_id__gt"] = last_indicator.get(
-                            "update_id")
+                if len(indicators_json_list) < MAX_PAGE_SIZE:
+                    storage.clear()
+                    next_page = False
+                else:
+                    query_params["update_id__gt"] = last_indicator.get("update_id")
 
-                    if page_count >= PAGE_LIMIT:
-                        storage.clear()
-                        if last_indicator and last_indicator.get("modified_ts"):
-                            storage["last_updated"] = last_indicator.get(
-                                "modified_ts")
-                        self.logger.info(
-                            f"{self.log_prefix}: Page limit of {PAGE_LIMIT} "
-                            f"has reached. Returning {len(indicator_list)} "
-                            "indicator(s). The pulling of the indicators will "
-                            "be resumed in the next pull cycle."
-                        )
-
-                        self.logger.info(
-                            f"{self.log_prefix}: Completed fetching indicators"
-                            " for the plugin. Total indicator(s) fetched "
-                            f"{len(indicator_list)}, {indicator_type_count['sha256']} SHA256, "
-                            f"{indicator_type_count['md5']} MD5, {indicator_type_count['url']} URL, "
-                            f"{indicator_type_count['domain']} Domain, {indicator_type_count['ip']} IP, "
-                            f"and {indicator_type_count['ipv6']} IPv6 indicator(s)"
-                            f" fetched. skipped {skipped_count} indicator(s), "
-                            f"total {len(total_skipped_tags)} tag(s) skipped."
-                        )
-                        return indicator_list
-
-                except AnomaliThreatstreamPluginException as ex:
+                if page_count >= PAGE_LIMIT:
                     storage.clear()
                     if last_indicator and last_indicator.get("modified_ts"):
-                        storage["last_updated"] = last_indicator.get(
-                            "modified_ts")
-                    err_msg = (
-                        f"{self.log_prefix}: Error occurred while executing "
-                        "the pull cycle. The pulling of the indicators will be"
-                        f" resumed in the next pull cycle. Error: {ex}."
-                    )
-                    self.logger.error(
-                        message=err_msg, details=(str(traceback.format_exc()))
-                    )
-                    break
+                        storage["last_updated"] = last_indicator.get("modified_ts")
+                    next_page = False
 
-                except Exception as ex:
-                    storage.clear()
-                    if last_indicator and last_indicator.get("modified_ts"):
-                        storage["last_updated"] = last_indicator.get(
-                            "modified_ts")
-                    err_msg = (
-                        f"{self.log_prefix}: Error occurred while executing "
-                        "the pull cycle. The pulling of the indicators will be"
-                        f" resumed in the next pull cycle. Error: {ex}."
-                    )
-                    self.logger.error(
-                        message=err_msg, details=(str(traceback.format_exc()))
-                    )
-                    break
+                if hasattr(self, "sub_checkpoint"):
+                    yield current_extracted_indicators, {
+                        "checkpoint": last_indicator.get("modified_ts")
+                    }
+                else:
+                    yield current_extracted_indicators
+        except AnomaliThreatstreamPluginException as ex:
+            storage.clear()
+            if last_indicator and last_indicator.get("modified_ts"):
+                storage["last_updated"] = last_indicator.get("modified_ts")
 
-            self.logger.info(
-                f"{self.log_prefix}: Total indicator(s) fetched "
-                f"{len(indicator_list)}, {indicator_type_count['sha256']} SHA256, "
-                f"{indicator_type_count['md5']} MD5, {indicator_type_count['url']} URL, "
-                f"{indicator_type_count['domain']} Domain, {indicator_type_count['ip']} IP, "
-                f"and {indicator_type_count['ipv6']} IPv6 indicator(s) fetched"
-                f". skipped {skipped_count} indicator(s), "
-                f"total {len(total_skipped_tags)} tag(s) skipped."
-            )
-
-            if skipped_count > 0:
-                self.logger.info(
-                    f"{self.log_prefix}: Skipped {skipped_count} record(s)"
-                    " as indicator value might be None or invalid or "
-                    " it has 'netskope-ce' tag in it."
-                )
-            if len(total_skipped_tags) > 0:
-                self.logger.info(
-                    f"{self.log_prefix}: {len(total_skipped_tags)} tag(s) "
-                    "skipped as they were longer than expected size or due"
-                    " to some other exceptions that occurred while "
-                    "creation of them. tags: "
-                    f"({', '.join(total_skipped_tags)})."
-                )
-
-            return indicator_list
-
-        except AnomaliThreatstreamPluginException as err:
             self.logger.error(
                 message=(
-                    f"{self.log_prefix}: Error occurred while pulling"
-                    f" indicators. Error: {err}"
+                    f"{self.log_prefix}: Error Occurred while pulling "
+                    f"indicators from {PLATFORM_NAME} Error: {ex}"
                 ),
-                details=str(traceback.format_exc()),
+                details=traceback.format_exc(),
             )
-            raise err
-        except Exception as exp:
+
+            if not hasattr(self, "sub_checkpoint"):
+                yield parsed_indicators
+
+        except Exception as ex:
+            storage.clear()
+            if last_indicator and last_indicator.get("modified_ts"):
+                storage["last_updated"] = last_indicator.get("modified_ts")
+
             self.logger.error(
                 message=(
-                    f"{self.log_prefix}: Error occurred while pulling"
-                    f" indicators. Error: {exp}"
+                    f"{self.log_prefix}: Unexpected error occurred while "
+                    f"pulling indicators from {PLATFORM_NAME}. Error: {ex}"
                 ),
-                details=str(traceback.format_exc()),
+                details=traceback.format_exc(),
             )
-            raise exp
+
+            if not hasattr(self, "sub_checkpoint"):
+                yield parsed_indicators
 
     def push(self, indicators: list, action_dict: dict) -> PushResult:
         """Push method will push the indicators to Anomali.
@@ -863,8 +860,7 @@ class AnomaliThreatstreamPlugin(PluginBase):
 
         if action_value == "share_ioc":
             if not indicators:
-                self.logger.info(
-                    f"{self.log_prefix}: No indicators found to push.")
+                self.logger.info(f"{self.log_prefix}: No indicators found to push.")
                 return PushResult(success=True, message="No indicators found.")
 
             action_params = action_dict.get("parameters", {})
@@ -930,8 +926,7 @@ class AnomaliThreatstreamPlugin(PluginBase):
             # Convert bytes to megabytes
             size_in_mb = size_in_bytes / (1024.0**2)
             if size_in_mb > TARGET_SIZE_MB:
-                chunk_data = self.anomali_threatstream_helper.split_into_size(
-                    objects)
+                chunk_data = self.anomali_threatstream_helper.split_into_size(objects)
                 results.extend(chunk_data)
             else:
                 results.append(objects)
@@ -939,7 +934,12 @@ class AnomaliThreatstreamPlugin(PluginBase):
             headers = self.get_headers(self.configuration)
             base_url = self.configuration.get("base_url").strip().strip("/")
             final_payload = {
-                "meta": {"classification": "private", "allow_unresolved": True, "allow_update": True, "enrich": False},
+                "meta": {
+                    "classification": "private",
+                    "allow_unresolved": True,
+                    "allow_update": True,
+                    "enrich": False,
+                },
             }
 
             page_count = 0
@@ -1093,8 +1093,7 @@ class AnomaliThreatstreamPlugin(PluginBase):
                         {"key": "Infected Bot IP", "value": "bot_ip"},
                         {"key": "Brute Force IP", "value": "brute_ip"},
                         {"key": "Malware C&C IP", "value": "c2_ip"},
-                        {"key": "Commercial Webproxy IP",
-                            "value": "comm_proxy_ip"},
+                        {"key": "Commercial Webproxy IP", "value": "comm_proxy_ip"},
                         {"key": "Compromised IP", "value": "compromised_ip"},
                         {"key": "Cryptocurrency IP", "value": "crypto_ip"},
                         {"key": "DDOS IP", "value": "ddos_ip"},
@@ -1103,8 +1102,7 @@ class AnomaliThreatstreamPlugin(PluginBase):
                         {"key": "Exploit Kit IP", "value": "exploit_ip"},
                         {"key": "Fraud IP", "value": "fraud_ip"},
                         {"key": "I2P IP", "value": "i2p_ip"},
-                        {"key": "Information Stealer IP",
-                            "value": "infostealer_ip"},
+                        {"key": "Information Stealer IP", "value": "infostealer_ip"},
                         {"key": "Internet Of things Malicious IP", "value": "iot_ip"},
                         {"key": "Malware IP", "value": "mal_ip"},
                         {"key": "Peer-to-Peer C&C IP", "value": "p2pcnc"},
@@ -1135,15 +1133,13 @@ class AnomaliThreatstreamPlugin(PluginBase):
                     "type": "choice",
                     "choices": [
                         {"key": "Actor IPv6", "value": "actor_ipv6"},
-                        {"key": "Anonymous Proxy IPv6",
-                            "value": "anon_proxy_ipv6"},
+                        {"key": "Anonymous Proxy IPv6", "value": "anon_proxy_ipv6"},
                         {"key": "Anonymous VPN IPv6", "value": "anon_vpn_ipv6"},
                         {"key": "APT IPv6", "value": "apt_ipv6"},
                         {"key": "Infected Bot IPv6", "value": "bot_ipv6"},
                         {"key": "Brute Force IPv6", "value": "brute_ipv6"},
                         {"key": "Malware C&C IPv6", "value": "c2_ipv6"},
-                        {"key": "Commercial Webproxy IPv6",
-                            "value": "comm_proxy_ipv6"},
+                        {"key": "Commercial Webproxy IPv6", "value": "comm_proxy_ipv6"},
                         {"key": "Compromised IPv6", "value": "compromised_ipv6"},
                         {"key": "Cryptocurrency IPv6", "value": "crypto_ipv6"},
                         {"key": "DDOS IPv6", "value": "ddos_ipv6"},
@@ -1196,18 +1192,15 @@ class AnomaliThreatstreamPlugin(PluginBase):
                             "key": "Commercial Webproxy Domain",
                             "value": "comm_proxy_domain",
                         },
-                        {"key": "Compromised Domain",
-                            "value": "compromised_domain"},
-                        {"key": "Cryptocurrency Pool Domain",
-                            "value": "crypto_pool"},
+                        {"key": "Compromised Domain", "value": "compromised_domain"},
+                        {"key": "Cryptocurrency Pool Domain", "value": "crypto_pool"},
                         {
                             "key": "Disposable Email Domain",
                             "value": "disposable_email_domain",
                         },
                         {"key": "Downloader Domain", "value": "downloader_domain"},
                         {"key": "Dynamic DNS", "value": "dyn_dns"},
-                        {"key": "Data Exfiltration Domain",
-                            "value": "exfil_domain"},
+                        {"key": "Data Exfiltration Domain", "value": "exfil_domain"},
                         {"key": "Exploit Kit Domain", "value": "exploit_domain"},
                         {"key": "Fraud Domain", "value": "fraud_domain"},
                         {"key": "Free Email Domain", "value": "free_email_domain"},
@@ -1254,8 +1247,7 @@ class AnomaliThreatstreamPlugin(PluginBase):
                             "key": "Cryptocurrency Mining Software",
                             "value": "crypto_hash",
                         },
-                        {"key": "Downloader File Hash",
-                            "value": "downloader_hash"},
+                        {"key": "Downloader File Hash", "value": "downloader_hash"},
                         {"key": "Exploit Hash", "value": "exploit_md5"},
                         {"key": "Fraud Hash", "value": "fraud_md5"},
                         {"key": "Hack Tool File Hash", "value": "hack_tool_md5"},
@@ -1269,15 +1261,13 @@ class AnomaliThreatstreamPlugin(PluginBase):
                         },
                         {"key": "JA3/JA3S TLS Fingerprint", "value": "ja3_md5"},
                         {"key": "Malware File Hash", "value": "mal_md5"},
-                        {"key": "SSL Certificate Hash",
-                            "value": "mal_sslcert_sha1"},
+                        {"key": "SSL Certificate Hash", "value": "mal_sslcert_sha1"},
                         {"key": "Phishing File Hash", "value": "phish_md5"},
                         {
                             "key": "Point Of Sale Malicious File Hash",
                             "value": "pos_hash",
                         },
-                        {"key": "Ransomware File Hash",
-                            "value": "ransomware_hash"},
+                        {"key": "Ransomware File Hash", "value": "ransomware_hash"},
                         {"key": "Rootkit File Hash", "value": "rootkit_hash"},
                         {"key": "Trojan File Hash", "value": "trojan_hash"},
                     ],
