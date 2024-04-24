@@ -1,0 +1,5 @@
+{
+  "name": "CSCC Default Mappings Beta",
+  "jsonData": "{\n    \"cscc_map_version\": \"2.1.0\",\n    \"taxonomy\": {\n      \"json\": {\n        \"alerts\": {\n          \"anomaly\": [],\n          \"dlp\": [],\n          \"malware\": [],\n          \"policy\": [],\n          \"Compromised Credential\": [],\n          \"Legal Hold\": [],\n          \"Malsite\": [],\n          \"Quarantine\": [],\n          \"Remediation\": [],\n          \"Security Assessment\": [],\n          \"Watchlist\": [],\n          \"uba\": [],\n          \"ctep\": []\n        },\n        \"events\": {\n          \"application\": [],\n          \"audit\": [],\n          \"infrastructure\": [],\n          \"page\": [],\n          \"network\": [],\n          \"incident\": []\n        }\n      }\n    }\n  }",
+  "isDefault": true
+}
