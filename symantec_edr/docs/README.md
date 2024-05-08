@@ -86,7 +86,7 @@ The Symantec EDR (On Prem) plugin fetches IoCs of the type of URL (Domain, IPv4,
 ```
 {
     "client_id": "5106b812*****5c1cb53b38f4862b",
-    "client_secret": "9N8yf8aAZ8ZOMQ0NtUO-gb3KYWvBukUCIm&*********",
+    "client_secret": <CLIENT SECRET>,
     "grant_type": "client_credentials"
 }
 ```
