@@ -55,10 +55,8 @@ from .sentinel_constants import (
     MAX_RETRIES,
     RETRY_SLEEP_TIME,
     MODULE_NAME,
-    TARGET_SIZE_MB,
-    BATCH_SIZE,
+    TARGET_SIZE_BYTES,
 )
-from .sentinel_helper import split_into_size
 
 
 class DataTypes(Enum):
@@ -163,7 +161,7 @@ class AzureSentinelClient:
         headers.update({"User-Agent": user_agent})
         return headers
 
-    def parse_response(self, response: requests.models.Response):
+    def parse_response(self, response: requests.models.Response, is_validation):
         """Parse Response will return JSON from response object.
 
         Args:
@@ -176,6 +174,8 @@ class AzureSentinelClient:
             return response.json()
         except json.JSONDecodeError as err:
             err_msg = f"Invalid JSON response received from API. Error: {str(err)}"
+            if is_validation:
+                err_msg = "Verify Workspace ID and Primary Key provided in the configuration parameters."
             self.logger.error(
                 message=f"{self.log_prefix}: {err_msg}",
                 details=f"API response: {response.text}",
@@ -186,6 +186,8 @@ class AzureSentinelClient:
                 "Unexpected error occurred while parsing"
                 f" json response. Error: {exp}"
             )
+            if is_validation:
+                err_msg = "Verify Workspace ID and Primary Key provided in the configuration parameters."
             self.logger.error(
                 message=f"{self.log_prefix}: {err_msg}",
                 details=f"API Response: {response.text}",
@@ -210,28 +212,28 @@ class AzureSentinelClient:
         validation_msg = " Verify the Workspace ID and Primary Key provided in configuration parameters."
         error_dict = {
             400: "Bad Request",
-            403: "Forbidden",
-            401: "Unauthorized",
+            403: "Forbidden Error",
+            401: "Unauthorized Error",
         }
         if status_code in [200, 201]:
             return
         elif status_code == 204:
             return {}
         elif status_code in error_dict:
-            response = self.parse_response(response=resp)
-            if response and "Message" in response:
+            response = self.parse_response(resp, is_validation)
+            if response and response.get("Message"):
                 err_msg = error_dict[status_code] + ". " + response["Message"]
             else:
                 err_msg = error_dict[status_code]
+            if is_validation:
+                err_msg = err_msg + "." + validation_msg
             self.logger.error(
                 message=(
                     f"{self.log_prefix}: Received exit code {status_code}, "
-                    f"{err_msg} while {logger_msg}."
+                    f"while {logger_msg}, {err_msg}"
                 ),
                 details=str(resp.text),
             )
-            if is_validation:
-                err_msg = err_msg + "." + validation_msg
             raise AzureSentinelException(err_msg)
         else:
             err_msg = (
@@ -239,15 +241,15 @@ class AzureSentinelClient:
                 if (status_code >= 500 and status_code <= 600)
                 else "HTTP Error"
             )
+            if is_validation:
+                err_msg = err_msg + "." + validation_msg
             self.logger.error(
                 message=(
                     f"{self.log_prefix}: Received exit code {status_code}, "
-                    f"{err_msg} while {logger_msg}."
+                    f" while {logger_msg}, {err_msg}"
                 ),
                 details=str(resp.text),
             )
-            if is_validation:
-                err_msg = err_msg + "." + validation_msg
             raise AzureSentinelException(err_msg)
 
     def api_helper(
@@ -336,15 +338,20 @@ class AzureSentinelClient:
                     return self.handle_error(response, logger_msg, is_validation)
 
         except requests.exceptions.ProxyError as error:
-            err_msg = "Proxy error occurred. Verify the provided proxy configuration."
+            err_msg = (
+                f"Proxy error occurred while {logger_msg}. "
+                "Verify the provided proxy configuration."
+            )
             self.logger.error(
-                message=f"{self.log_prefix}: {err_msg} Error: {error} while {logger_msg}.",
+                message=f"{self.log_prefix}: {err_msg} Error: "
+                f"{error} while {logger_msg}.",
                 details=str(traceback.format_exc()),
             )
             raise AzureSentinelException(err_msg)
         except requests.exceptions.ConnectionError as error:
             err_msg = (
                 f"Unable to establish connection with {self.plugin_name}. "
+                f"while {logger_msg}. "
                 "Check Workspace ID provided in configuration parameter."
             )
             self.logger.error(
@@ -353,9 +360,10 @@ class AzureSentinelClient:
             )
             raise AzureSentinelException(err_msg)
         except requests.HTTPError as err:
-            err_msg = "HTTP Error occurred."
+            err_msg = f"HTTP Error occurred while {logger_msg}."
             self.logger.error(
-                message=f"{self.log_prefix}: {err_msg} Error: {err} while {logger_msg}.",
+                message=f"{self.log_prefix}: {err_msg} Error: "
+                f"{err} while {logger_msg}.",
                 details=str(traceback.format_exc()),
             )
             raise AzureSentinelException(err_msg)
@@ -364,13 +372,35 @@ class AzureSentinelClient:
         except Exception as exp:
             err_msg = (
                 "Unexpected error occurred while requesting "
-                f"to {self.plugin_name}. Error: {str(exp)}"
+                f"to {self.plugin_name} while {logger_msg}. Error: {str(exp)}"
             )
             self.logger.error(
                 message=f"{self.log_prefix}: {err_msg}",
                 details=str(traceback.format_exc()),
             )
             raise AzureSentinelException(err_msg)
+        
+    def create_payload(self, data, data_types):
+        payload_size = sys.getsizeof(json.dumps(data))
+
+        # If the payload size is within the limit, return it as a single chunk
+        if payload_size <= TARGET_SIZE_BYTES or len(data) == 1:
+            return [data]
+        
+        self.logger.debug(
+            f"{self.log_prefix}: {data_types} - The size of the current data "
+            "chunk exceeds the allowed payload limit "
+            "hence data will be divided into further chunks "
+            "before sharing. Current data chunk length: "
+            f"{len(data)}. Current data chunk size in bytes: {payload_size}"
+        )
+
+        # Split the data into two parts
+        mid = len(data) // 2
+        part1 = self.create_payload(data[:mid], data_types)  # Recursively process the first half
+        part2 = self.create_payload(data[mid:], data_types)  # Recursively process the second half
+        return part1 + part2  # Combine the results from both halves
+
 
     def push(self, data, data_type, sub_type, logger_msg, is_validation=False):
         """Call method of post_data with appropriate parameters.
@@ -390,24 +420,14 @@ class AzureSentinelClient:
             workspace_id = self.configuration.get("workspace_id").strip()
             shared_key = self.configuration.get("primary_key")
             result = []
-
-            size_in_bytes = sys.getsizeof(json.dumps(data))
-            size_in_mb = size_in_bytes / (1024.0**2)  # Convert bytes to megabytes
-            if size_in_mb > TARGET_SIZE_MB:
-                for item in range(0, len(data), BATCH_SIZE):
-                    current_part = data[item : item + BATCH_SIZE]
-                    size_in_bytes = sys.getsizeof(json.dumps(current_part))
-                    size_in_mb = size_in_bytes / (
-                        1024.0**2
-                    )  # Convert bytes to megabytes
-                    if size_in_mb > TARGET_SIZE_MB:
-                        chunk_data = split_into_size(current_part)
-                        result.extend(chunk_data)
-                    else:
-                        result.append(current_part)
-            else:
-                result.append(data)
-
+            data_types = f"[{data_type}]:[{sub_type}]"
+            result = self.create_payload(data, data_types)
+            if not is_validation:
+                self.logger.info(
+                    f"{self.log_prefix}: {data_types} - "
+                    f"Initializing the sharing of data in {len(result)} "
+                    "chunk(s)."
+                )
             rfc1123date = datetime.datetime.utcnow().strftime(
                 "%a, %d %b %Y %H:%M:%S GMT"
             )
@@ -421,6 +441,7 @@ class AzureSentinelClient:
             headers = self._add_user_agent(headers)
             page = 0
             for result_data in result:
+                current_chunk_size = sys.getsizeof(json.dumps(result_data))
                 page += 1
                 content_length = len(json.dumps(result_data))
                 signature = self._build_signature(
@@ -430,7 +451,11 @@ class AzureSentinelClient:
                     headers["Authorization"] = signature
                     msg = ""
                     if not is_validation:
-                        msg = f" for page {page}"
+                        msg = (
+                            f" sharing {data_types} for batch {page}, batch size: "
+                            f"{current_chunk_size} and batch "
+                            f"length: {len(result_data)}"
+                        )
                     self.api_helper(
                         logger_msg + msg,
                         uri,
@@ -442,24 +467,29 @@ class AzureSentinelClient:
                         is_validation=is_validation,
                     )
                 except Exception:
+                    if is_validation:
+                        raise 
                     skipped_count += len(result_data)
                     continue
                 total_count += len(result_data)
                 if not is_validation:
-                    log_msg = "[{}]:[{}] Successfully ingested {} {}(s) for page {} to {}.".format(
-                        data_type,
-                        sub_type,
+                    log_msg = (
+                        "{} - Successfully ingested {} {}(s) for batch {} to {}. "
+                        "Total {}(s) shared till now: {}"
+                    ).format(
+                        data_types,
                         len(result_data),
                         data_type,
                         page,
                         self.plugin_name,
+                        data_type,
+                        total_count
                     )
                     self.logger.info(f"{self.log_prefix}: {log_msg}")
 
             if not is_validation:
-                log_msg = "[{}]:[{}] Successfully ingested {} {}(s) to {}.".format(
-                    data_type,
-                    sub_type,
+                log_msg = "{} - Successfully ingested {} {}(s) to {}.".format(
+                    data_types,
                     total_count,
                     data_type,
                     self.plugin_name,
@@ -467,7 +497,8 @@ class AzureSentinelClient:
                 self.logger.info(f"{self.log_prefix}: {log_msg}")
             if not is_validation and skipped_count > 0:
                 self.logger.info(
-                    f"{self.log_prefix}: Skipped {skipped_count} records due to some unexpected error occurred, check logs for more details."
+                    f"{self.log_prefix}: {data_types} - Skipped {skipped_count} records due to some "
+                    "unexpected error occurred, check logs for more details."
                 )
 
         except Error:
@@ -477,6 +508,7 @@ class AzureSentinelClient:
         except Exception as exp:
             err_msg = (
                 "Unexpected error occurred while requesting "
-                f"to {self.plugin_name}. Error: {str(exp)}"
+                f"to {self.plugin_name} while {logger_msg}. "
+                f"Error: {str(exp)}"
             )
             raise AzureSentinelException(err_msg)

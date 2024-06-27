@@ -250,14 +250,12 @@ class AzureSentinelPlugin(PluginBase):
         transformed_data = []
         # First apply the filters based on the given mapping file
         subtype_mappings = self.get_subtype_mapping(mappings, subtype)
-        if not subtype_mappings and data_type != "webtx":
-            return raw_data
-
         for data in raw_data:
             try:
-                mapped_data = map_sentinel_data(subtype_mappings, data)
-                if data_type == "webtx" and not subtype_mappings:
+                if not subtype_mappings:
                     mapped_data = data
+                else:
+                    mapped_data = map_sentinel_data(subtype_mappings, data)
                 if mapped_data:
                     """
                     Now we have filtered record as per the mapping file, so we
@@ -315,7 +313,7 @@ class AzureSentinelPlugin(PluginBase):
                 )
                 skipped_logs += 1
         if skipped_logs > 0:
-            self.logger.debug(
+            self.logger.info(
                 "{}: [{}][{}] Plugin couldn't process {} records because they "
                 "either had no data or contained invalid/missing "
                 "fields according to the configured JSON mapping. "
