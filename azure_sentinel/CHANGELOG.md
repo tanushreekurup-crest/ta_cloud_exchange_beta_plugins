@@ -1,3 +1,7 @@
+# 3.0.2
+## Updated
+- Updated the default timeout to 3 minutes.
+
 # 3.0.1
 ## Updated
 - Updated the push mechanism for splitting data into batches.
