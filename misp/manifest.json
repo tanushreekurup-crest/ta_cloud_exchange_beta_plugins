@@ -1,7 +1,7 @@
 {
   "name": "MISP",
   "id": "misp",
-  "version": "1.4.0-beta",
+  "version": "1.4.1-beta",
   "description": "This plugin is used to fetch event attributes from MISP (Malware Information Sharing Platform) and extract indicators of type SHA256, MD5, URL, Domain, IP (IPv4 and IPv6) from them. It can also share the indicators of type SHA256, MD5, URL, Domain (Domain, FQDN and Hostname), IP (IPv4 and IPv6) as attributes to MISP Custom Events. To get required details for creating a new configuration, navigate to https://<misp-url>/events/automation.",
   "patch_supported": true,
   "push_supported": true,
@@ -143,12 +143,12 @@
       "description": "Indicators from only the specified comma separated event names will be fetched. Keep empty to pull indicators from all the events."
     },
     {
-      "label": "Exclude IoCs from Event",
+      "label": "Exclude IoCs from Events",
       "key": "event_name",
       "type": "text",
       "mandatory": true,
       "default": "",
-      "description": "Indicators attached to this event will be ignored while pulling data from MISP."
+      "description": "Indicators attached to the provided comma-separated events will be ignored while pulling data from MISP. Expected value is comma-separated event names or event IDs."
     },
     {
       "label": "IoC Event Type",
