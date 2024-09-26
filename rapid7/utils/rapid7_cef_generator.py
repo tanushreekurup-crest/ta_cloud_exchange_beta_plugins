@@ -36,12 +36,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import collections
 import socket
 import time
-
+import traceback
 from .rapid7_constants import (
     SEVERITY_MAP,
-    AUDIT_SEVERITY_MAP,
     SEVERITY_UNKNOWN,
+    AUDIT_SEVERITY_MAP,
 )
+from .rapid7_exceptions import Rapid7PluginError
 from netskope.integrations.cls.utils.sanitizer import *
 from netskope.integrations.cls.utils.converter import *
 
@@ -78,8 +79,8 @@ class CEFGenerator(object):
         the dict for data type converters.
 
         Returns:
-            Dict object having details of all the available CEF
-            fields and its type converters
+            Dict object having details of all the available CEF fields and
+            its type converters
         """
         converters = type_converter()
 
@@ -94,7 +95,9 @@ class CEFGenerator(object):
                 for subtype, subtype_mapping in data_mapping.items():
                     for key, value in subtype_mapping.items():
                         for field, field_mapping in value.items():
-                            field_converters[field] = self.extension_converter(
+                            field_converters[
+                                f"{data_type}_{subtype}_{key}_{field}"
+                            ] = self.extension_converter(
                                 key_name=field,
                                 converter=converters[
                                     field_mapping.get(
@@ -104,15 +107,18 @@ class CEFGenerator(object):
                             )
             return field_converters
         except Exception as err:
-            self.logger.error(
-                "{}: Error occurred while parsing CEF transformation field. "
-                "Error: {}".format(self.log_prefix, err)
+            error_msg = (
+                "Error occurred while parsing CEF transformation field."
             )
-            raise
+            self.logger.error(
+                message=(f"{self.log_prefix}: {error_msg} Error: {err}"),
+                details=str(traceback.format_exc()),
+            )
+            raise Rapid7PluginError(error_msg)
 
     def _valid_extensions(self):
-        """To Parse the given transformation mapping and creates the dict for
-        each provided values with its sanitizers.
+        """To Parse the given transformation mapping and creates
+        the dict for each provided values with its sanitizers.
 
         Returns:
             Dict object having details of all the available CEF fields and
@@ -131,7 +137,9 @@ class CEFGenerator(object):
                 for subtype, subtype_mapping in data_mapping.items():
                     for key, value in subtype_mapping.items():
                         for field, field_mapping in value.items():
-                            field_sanitizers[field] = self.extension(
+                            field_sanitizers[
+                                f"{data_type}_{subtype}_{key}_{field}"
+                            ] = self.extension(
                                 key_name=field,
                                 sanitizer=sanitizers[
                                     field_mapping.get(
@@ -141,11 +149,14 @@ class CEFGenerator(object):
                             )
             return field_sanitizers
         except Exception as err:
-            self.logger.error(
-                "{}: Error occurred while parsing CEF transformation field. "
-                "Error: {}".format(self.log_prefix, err)
+            error_msg = (
+                "Error occurred while parsing CEF " "transformation field."
             )
-            raise
+            self.logger.error(
+                message=(f"{self.log_prefix}: {error_msg} Error: {err}"),
+                details=str(traceback.format_exc()),
+            )
+            raise Rapid7PluginError(error_msg)
 
     def get_header_value(self, header, headers):
         """To Fetch sanitized value of header from given
@@ -177,11 +188,9 @@ class CEFGenerator(object):
         for configured_header in list(headers.keys()):
             if configured_header not in possible_headers:
                 self.logger.warn(
-                    "{}([{}][{}]): Found invalid header configured in "
-                    'rapid7 mapping file: "{}". Header '
-                    "field will be ignored.".format(
-                        self.log_prefix, data_type, subtype, configured_header
-                    )
+                    f"{self.log_prefix}: [{data_type}][{subtype}]- "
+                    "Found invalid header configured in rapid7 mapping file: "
+                    f"{configured_header}. Header field will be ignored."
                 )
 
     def webtx_timestamp(self, raw_data):
@@ -214,51 +223,54 @@ class CEFGenerator(object):
             # First convert the incoming value from
             # Netskope to appropriate data type
             try:
-                value = self.extension_converters[name].converter(value, name)
+                value = self.extension_converters[
+                    f"{data_type}_{subtype}_extension_{name}"
+                ].converter(value, name)
             except KeyError:
                 self.logger.warn(
-                    "{}([{}][{}]): An error occurred while generating CEF "
+                    "{}: [{}][{}] An error occurred while generating CEF "
                     'data for field: "{}". Could not find the field in '
-                    'the "valid_extensions". Field will be ignored'.format(
+                    'the "valid_extensions". Field will be ignored.'.format(
                         self.log_prefix, data_type, subtype, name
                     )
                 )
                 continue
             except Exception as err:
                 self.logger.warn(
-                    "{}([{}][{}]): An error occurred while generating CEF "
-                    'data for field: "{}". Error: {}. '
-                    "Field will be ignored".format(
+                    "{}: [{}][{}] An error occurred while generating "
+                    'CEF data for field: "{}". Error: {}. '
+                    "Field will be ignored.".format(
                         self.log_prefix, data_type, subtype, name, err
                     )
                 )
                 continue
 
-            # Validate and sanitise (if required) the incoming value from
-            # Netskope before mapping it CEF
+            # Validate and sanitise (if required) the incoming value
+            # from Netskope before mapping it CEF
             try:
-                sanitized_value = self.valid_extensions[name].sanitizer(
+                field_key = f"{data_type}_{subtype}_extension_{name}"
+                sanitized_value = self.valid_extensions[field_key].sanitizer(
                     value, name
                 )
                 if isinstance(sanitized_value, str):
                     sanitized_value = self._equals_escaper(sanitized_value)
 
-                extension_strs[
-                    self.valid_extensions[name].key_name
-                ] = sanitized_value
+                extension_strs[self.valid_extensions[field_key].key_name] = (
+                    sanitized_value
+                )
             except KeyError:
                 self.logger.warn(
-                    "{}([{}][{}]): An error occurred while generating CEF "
-                    'data for field: "{}". Could not find the field in '
-                    'the "valid_extensions". Field will be ignored'.format(
+                    "{}: [{}][{}] An error occurred while generating "
+                    'CEF data for field: "{}". Could not find the field in '
+                    'the "valid_extensions". Field will be ignored.'.format(
                         self.log_prefix, data_type, subtype, name
                     )
                 )
             except Exception as err:
                 self.logger.warn(
-                    "{}([{}][{}]): An error occurred while generating CEF "
+                    "{}: [{}][{}] An error occurred while generating CEF "
                     'data for field: "{}". Error: {}. '
-                    "Field will be ignored".format(
+                    "Field will be ignored.".format(
                         self.log_prefix, data_type, subtype, name, err
                     )
                 )
@@ -298,14 +310,16 @@ class CEFGenerator(object):
                             headers[header] = SEVERITY_MAP.get(
                                 str(headers[header]).lower(), SEVERITY_UNKNOWN
                             )
+
                     cef_components.append(
                         self.get_header_value(header, headers)
                     )
+
                 except Exception as err:
                     self.logger.warn(
-                        "{}([{}][{}]): An error occurred while generating CEF "
-                        'data for header field: "{}". Error: {}. '
-                        "Field will be ignored".format(
+                        "{}: [{}][{}] An error occurred while generating "
+                        'CEF data for header field: "{}". Error: {}. '
+                        "Field will be ignored.".format(
                             self.log_prefix, data_type, subtype, header, err
                         )
                     )
