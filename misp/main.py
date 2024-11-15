@@ -179,7 +179,7 @@ class MISPPlugin(PluginBase):
         # create set of excluded events for
         event_ids = []
         include_event_name = self.configuration.get("include_event_name")
-        exclude_event = self.configuration.get("event_name")
+        exclude_event = self.configuration.get("event_name", "")
         base_url, api_key = self.misp_helper.get_credentials(
             self.configuration
         )
@@ -188,6 +188,13 @@ class MISPPlugin(PluginBase):
             for inc_event in include_event_name.strip().split(","):
                 event_id = self._event_exists(inc_event, base_url, api_key)[1]
                 event_ids.append(event_id)
+        exclude_events = []
+        if exclude_event:
+            exclude_events = [
+                event.strip()
+                for event in exclude_event.strip().split(",")
+                if event.strip()
+            ]
 
         # Convert to epoch
         if start_time:
@@ -205,7 +212,7 @@ class MISPPlugin(PluginBase):
                 "returnFormat": "json",
                 "limit": PULL_PAGE_SIZE,
                 "page": 1,
-                "timestamp": [str(start_time), str(end_time)],
+                "attribute_timestamp": [str(start_time), str(end_time)],
                 # Filter attributes based on type, category and tags
                 "category": self.configuration.get("attr_category"),
                 "type": self.configuration.get("attr_type"),
@@ -288,12 +295,16 @@ class MISPPlugin(PluginBase):
                 for attr in resp_json.get("response", {}).get("Attribute", []):
 
                     if (
-                        attr.get("type") in ATTRIBUTE_TYPES
+                        attr.get("Event", {}).get("info", "") in exclude_events
+                        or attr.get("Event", {}).get("id") in exclude_events
+                    ):
+
+                        continue
+
+                    if (
+                        attr.get("type")
+                        in ATTRIBUTE_TYPES
                         # Filter already pushed attributes/indicators
-                        and (
-                            attr.get("Event", {}).get("info", "")
-                            != exclude_event
-                        )
                     ):
 
                         # Deep link of event corresponding to the attribute
@@ -1057,6 +1068,13 @@ class MISPPlugin(PluginBase):
 
             events_to_include = include_event_name.split(",")
             event_to_exclude = configuration.get("event_name", "").strip()
+            exclude_events = []
+            if event_to_exclude:
+                exclude_events = [
+                    event.strip()
+                    for event in event_to_exclude.strip().split(",")
+                    if event.strip()
+                ]
 
             for event in events_to_include:
                 event = event.strip()
@@ -1071,7 +1089,7 @@ class MISPPlugin(PluginBase):
                     )
                     return ValidationResult(success=False, message=err_msg)
 
-                if event == event_to_exclude:
+                if event in exclude_events:
                     err_msg = (
                         f"{event} is present in Event Names and "
                         "Exclude IoCs from Event. Event Names and Exclude"
@@ -1086,9 +1104,24 @@ class MISPPlugin(PluginBase):
                         message=err_msg,
                     )
                 try:
-                    exist = self._event_exists(
+                    exist, event_id = self._event_exists(
                         event, base_url, api_key, is_validation=True
-                    )[0]
+                    )
+                    if event_id in exclude_events:
+                        err_msg = (
+                            f"{event} is present in Event Names and "
+                            "Exclude IoCs from Event. Event Names and Exclude"
+                            " IoCs from Event can't contain same value "
+                            "of event."
+                        )
+                        self.logger.error(
+                            f"{self.log_prefix}: {validation_err_msg}."
+                            f" {err_msg}."
+                        )
+                        return ValidationResult(
+                            success=False,
+                            message=err_msg,
+                        )
                 except Exception as exp:
                     err_msg = (
                         f"Unable to check the existence of {event}"
@@ -1410,7 +1443,9 @@ class MISPPlugin(PluginBase):
                     "default": "",
                     "description": (
                         "Name of the MISP Event in which the "
-                        "attributes/indicators are to be pushed."
+                        "attributes/indicators are to be pushed. "
+                        "If the Event Name does not already exists, "
+                        "a new event with the given name will be created."
                     ),
                 }
             ]

@@ -1,3 +1,7 @@
+# 1.4.1
+## Added
+- Added support for accepting multiple events in the "Exclude IoCs from Event" parameter.
+
 # 1.4.0
 ## Added
 - Added support for pulling indicators on the basis of Decaying Score Threshold, Decaying Model IDs, Published Events, IDS flag and Enforce Warning List IoCs flag.

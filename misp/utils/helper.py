@@ -149,7 +149,7 @@ class MISPPluginHelper(object):
             headers = self._add_user_agent(headers)
 
             debug_log_msg = (
-                f"{self.log_prefix} : API Request for {logger_msg}."
+                f"{self.log_prefix}: API Request for {logger_msg}."
                 f" Endpoint: {method} {url}"
             )
             if params:
@@ -172,7 +172,7 @@ class MISPPluginHelper(object):
                 )
                 status_code = response.status_code
                 self.logger.debug(
-                    f"{self.log_prefix} : Received API Response for "
+                    f"{self.log_prefix}: Received API Response for "
                     f"{logger_msg}. Status Code={status_code}."
                 )
 
